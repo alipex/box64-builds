@@ -1,0 +1,95 @@
+name: Build Box64
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (tag or commit SHA). Leave empty for latest release."
+        required: false
+        default: ""
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm64]             # Add more architectures later, e.g. amd64, riscv64
+        variant: [vanilla, optimized]  # Build types: default or optimized
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box64
+          fetch-depth: 0
+
+      - name: Set up QEMU (cross-compilation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git python3 gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libsdl2-dev ccache
+
+      - name: Determine version
+        id: get_version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ "${{ github.event_name }}" == "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+          else
+            VERSION=$(curl -s https://api.github.com/repos/ptitSeb/box64/releases/latest | jq -r .tag_name)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Fetch source for ${{ steps.get_version.outputs.version }}
+        run: |
+          git fetch --all --tags
+          git checkout ${{ steps.get_version.outputs.version }}
+
+      - name: Build Box64 (${{ matrix.arch }} / ${{ matrix.variant }})
+        run: |
+          BUILD_DIR="build-${{ matrix.arch }}-${{ matrix.variant }}"
+          mkdir -p $BUILD_DIR && cd $BUILD_DIR
+
+          # Default CMake flags
+          CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local"
+
+          # Cross-compiler for ARM64
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            CMAKE_FLAGS="$CMAKE_FLAGS -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++"
+          fi
+
+          # Optimized build adds extra flags
+          if [ "${{ matrix.variant }}" = "optimized" ]; then
+            CMAKE_FLAGS="$CMAKE_FLAGS -DARM_DYNAREC=ON -DLD80BITS=ON -DNOALIGN=ON -DWITH_SDL2=ON -DUSE_CCACHE=ON"
+          fi
+
+          cmake .. $CMAKE_FLAGS
+          make -j$(nproc)
+
+      - name: Package artifacts
+        run: |
+          BUILD_DIR="build-${{ matrix.arch }}-${{ matrix.variant }}"
+          cd $BUILD_DIR
+          mkdir -p dist
+          cp box64 dist/
+          cd dist
+          zip box64-${{ steps.get_version.outputs.version }}-${{ matrix.arch }}-${{ matrix.variant }}.zip box64
+          tar czf box64-${{ steps.get_version.outputs.version }}-${{ matrix.arch }}-${{ matrix.variant }}.tar.gz box64
+
+      - name: Upload release assets
+        if: github.event_name == 'release' || github.event.inputs.version != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          files: |
+            build-${{ matrix.arch }}-${{ matrix.variant }}/dist/box64-${{ steps.get_version.outputs.version }}-${{ matrix.arch }}-${{ matrix.variant }}.zip
+            build-${{ matrix.arch }}-${{ matrix.variant }}/dist/box64-${{ steps.get_version.outputs.version }}-${{ matrix.arch }}-${{ matrix.variant }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
