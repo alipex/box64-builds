@@ -1,4 +1,4 @@
-name: Build and Release Box64
+name: Build and release Box64
 
 on:
   # push:
