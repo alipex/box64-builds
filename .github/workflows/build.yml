@@ -58,7 +58,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
 
       - name: Clone Box64
-        run: git clone --branch ${{ env.version }} $BOX64_REPO box64-source
+        run: |
+          # Clone the repository
+          git clone $BOX64_REPO box64-source
+          cd box64-source
+
+          # Checkout the version
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Checking out tag $VERSION"
+            git checkout tags/$VERSION
+          else
+            echo "Tag $VERSION not found, using default branch"
+            git checkout master  # or main if that's the default branch
+          fi
 
       - name: Check architecture support
         id: check_arch
