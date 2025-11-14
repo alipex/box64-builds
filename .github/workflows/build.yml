@@ -1,11 +1,6 @@
 name: Build box64
 
 on:
-#  push:
-#    tags:
-#      - '*'
-#  release:            
-#    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -149,47 +144,34 @@ jobs:
             echo "${OUTPUT_NAME}" >> $WORKDIR/release_outputs.txt
           done
 
-      - name: Collect compiled binaries
-        if: env.skip_build != 'true'
-        id: collect_artifacts
-        run: |
-          files=()
-          for f in artifacts/*; do
-            files+=("\"$f\"")
-          done
-          printf "[%s]\n" "$(IFS=,; echo "${files[*]}")" > files.json
-          echo "list=$(cat files.json)" >> $GITHUB_OUTPUT
-        
       - name: Upload compiled binaries to artifacts
         if: env.skip_build != 'true'
         uses: actions/upload-artifact@v4
-        strategy:
-          matrix:
-            file: ${{ fromJson(steps.collect_artifacts.outputs.list) }}
         with:
-          name: ${{ matrix.file }}
-          path: ${{ matrix.file }}
+          name: box64-binaries-${{ matrix.arch }}-${{ env.version }}
+          path: artifacts/*
           if-no-files-found: error
 
-#      - name: Create github release
-#        if: env.skip_build != 'true'
-#        uses: softprops/action-gh-release@v1
-#        with:
-#          tag_name: ${{ github.ref_name || env.version }}
-#          name: "box64 ${{ github.ref_name || env.version }}"
-#          body: Automated build for version ${{ github.ref_name || env.version }}
-#          draft: false
-#          prerelease: ${{ github.event_name != 'release' && github.event_name != 'push' }}
-#        env:
-#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#
-#      - name: Upload release artifacts
-#        if: env.skip_build != 'true'
-#        uses: softprops/action-gh-release@v1
-#        with:
-#          files: artifacts/*
-#        env:
-#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Commented (publishing not yet necessary)
+      # - name: Create github release
+      #   if: env.skip_build != 'true'
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: ${{ github.ref_name || env.version }}
+      #     name: "box64 ${{ github.ref_name || env.version }}"
+      #     body: Automated build for version ${{ github.ref_name || env.version }}
+      #     draft: false
+      #     prerelease: ${{ github.event_name != 'release' && github.event_name != 'push' }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # - name: Upload release artifacts
+      #   if: env.skip_build != 'true'
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     files: artifacts/*
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set release outputs
         if: env.skip_build != 'true'
