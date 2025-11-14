@@ -1,11 +1,11 @@
 name: Build and Release Box64
 
 on:
-  push:
-    tags:
-      - '*'
-  release:
-    types: [published]
+  # push:
+  #  tags:
+  #    - '*'
+  #release:
+  #  types: [published]
   workflow_dispatch:
     inputs:
       version:
