@@ -1,11 +1,11 @@
-name: Build and release Box64
+name: Build box64
 
 on:
-  # push:
-  #  tags:
-  #    - '*'
-  #release:
-  #  types: [published]
+#  push:
+#    tags:
+#      - '*'
+#  release:            
+#    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -29,23 +29,13 @@ jobs:
       - name: Set version
         id: set_version
         run: |
-          # Default: manually specified version from workflow_dispatch
           VERSION_INPUT="${{ github.event.inputs.version }}"
           VERSION=""
 
-          # If workflow_dispatch and version specified
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "$VERSION_INPUT" ]]; then
             VERSION="$VERSION_INPUT"
-
-          # If push to a tag
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
-
-          # If release event
-          elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
-            VERSION="${{ github.event.release.tag_name }}"
-
-          # Otherwise fallback to latest tag in repo
           else
             latest_tag=$(git ls-remote --tags $BOX64_REPO | awk -F/ '{print $3}' | sort -V | tail -n1)
             VERSION="$latest_tag"
@@ -55,19 +45,19 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_ENV
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
 
       - name: Clone Box64
         run: |
           git clone $BOX64_REPO box64-source
           cd box64-source
-
-          # Check if version exists as a tag
           if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-            echo "Checking out tag $VERSION"
             git checkout tags/$VERSION
           else
-            echo "Tag $VERSION not found, using main branch"
             git checkout main
           fi
 
@@ -81,7 +71,6 @@ jobs:
 
           # RISC-V support from v0.1.8
           if [[ "${{ matrix.arch }}" == "rv64" && $ver_num -lt 10800 ]]; then
-            echo "RISC-V not supported for version ${{ env.version }}"
             skip_build=true
           fi
 
@@ -116,12 +105,12 @@ jobs:
               FLAGS="$FLAGS -DBUILD_DYNAREC=OFF"
             fi
 
-            # Embed Box32 from v0.3.2
+            # embed box32 from v0.3.2
             if [[ $ver_num -ge 30302 ]]; then
               FLAGS="$FLAGS -DBUILD_BOX32=ON"
             fi
 
-            # Cross-compiler settings
+            # cross-compiler settings
             if [[ "${{ matrix.arch }}" == "arm64" ]]; then
               SYSTEM_PROCESSOR="aarch64"
               C_COMPILER="aarch64-linux-gnu-gcc"
@@ -142,38 +131,47 @@ jobs:
             make -j$(nproc)
             cd ../..
 
-            # Copy built binary to artifacts folder
             OUTPUT_NAME="box64-${{ env.version }}-${BUILD_TYPE}-${{ matrix.arch }}"
-            cp $BUILD_DIR/box64 artifacts/${OUTPUT_NAME}
+            BINARY_PATH=$(find $BUILD_DIR -type f -name "box64" | head -n1)
+            if [[ -f "$BINARY_PATH" ]]; then
+                cp "$BINARY_PATH" artifacts/${OUTPUT_NAME}
+            else
+                echo "Error: box64 binary not found in $BUILD_DIR"
+                exit 1
+            fi
             echo "${OUTPUT_NAME}" >> release_outputs.txt
           done
 
-      - name: Upload build artifacts as job artifact
+      - name: upload build artifacts
         if: env.skip_build != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: box64-artifacts-${{ env.version }}
           path: artifacts/*
 
-      #- name: Create GitHub Release
-      #  if: env.skip_build != 'true'
-      #  uses: softprops/action-gh-release@v1
-      #  with:
-      #    tag_name: ${{ github.ref_name || env.version }}
-      #    name: "Box64 ${{ github.ref_name || env.version }}"
-      #    body: |
-      #      Automated build for version ${{ github.ref_name || env.version }}.
-      #      Includes architectures: ARM64, RV64 (as available).
-      #      Build types: regular / optimized.
-      #    draft: false
-      #    prerelease: ${{ github.event_name != 'release' && github.event_name != 'push' }}
-      #  env:
-      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#      - name: create github release
+#        if: env.skip_build != 'true'
+#        uses: softprops/action-gh-release@v1
+#        with:
+#          tag_name: ${{ github.ref_name || env.version }}
+#          name: "box64 ${{ github.ref_name || env.version }}"
+#          body: Automated build for version ${{ github.ref_name || env.version }}
+#          draft: false
+#          prerelease: ${{ github.event_name != 'release' && github.event_name != 'push' }}
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#
+#      - name: upload release artifacts
+#        if: env.skip_build != 'true'
+#        uses: softprops/action-gh-release@v1
+#        with:
+#          files: artifacts/*
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set release outputs
+      - name: set release outputs
         if: env.skip_build != 'true'
         run: |
           while read output; do
             echo "release_output=${output}" >> $GITHUB_OUTPUT
           done < release_outputs.txt
-
