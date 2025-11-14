@@ -59,17 +59,16 @@ jobs:
 
       - name: Clone Box64
         run: |
-          # Clone the repository
           git clone $BOX64_REPO box64-source
           cd box64-source
 
-          # Checkout the version
+          # Check if version exists as a tag
           if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
             echo "Checking out tag $VERSION"
             git checkout tags/$VERSION
           else
-            echo "Tag $VERSION not found, using default branch"
-            git checkout master  # or main if that's the default branch
+            echo "Tag $VERSION not found, using main branch"
+            git checkout main
           fi
 
       - name: Check architecture support
