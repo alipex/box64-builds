@@ -51,7 +51,7 @@ jobs:
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
             gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
 
-      - name: Clone Box64
+      - name: Clone ptitSeb/Box64
         run: |
           git clone $BOX64_REPO box64-source
           cd box64-source
@@ -61,7 +61,7 @@ jobs:
             git checkout main
           fi
 
-      - name: Check architecture support
+      - name: Check support for flags
         id: check_arch
         run: |
           skip_build=false
@@ -149,7 +149,7 @@ jobs:
             echo "${OUTPUT_NAME}" >> $WORKDIR/release_outputs.txt
           done
 
-      - name: Collect artifact files
+      - name: Collect compiled binaries
         if: env.skip_build != 'true'
         id: collect_artifacts
         run: |
@@ -160,7 +160,7 @@ jobs:
           printf "[%s]\n" "$(IFS=,; echo "${files[*]}")" > files.json
           echo "list=$(cat files.json)" >> $GITHUB_OUTPUT
         
-      - name: Upload build artifacts
+      - name: Upload compiled binaries to artifacts
         if: env.skip_build != 'true'
         uses: actions/upload-artifact@v4
         strategy:
@@ -171,7 +171,7 @@ jobs:
           path: ${{ matrix.file }}
           if-no-files-found: error
 
-#      - name: create github release
+#      - name: Create github release
 #        if: env.skip_build != 'true'
 #        uses: softprops/action-gh-release@v1
 #        with:
@@ -183,7 +183,7 @@ jobs:
 #        env:
 #          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 #
-#      - name: upload release artifacts
+#      - name: Upload release artifacts
 #        if: env.skip_build != 'true'
 #        uses: softprops/action-gh-release@v1
 #        with:
