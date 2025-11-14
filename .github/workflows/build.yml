@@ -149,15 +149,27 @@ jobs:
             echo "${OUTPUT_NAME}" >> $WORKDIR/release_outputs.txt
           done
 
-      - name: upload each artifact as separate file
+      - name: Collect artifact files
         if: env.skip_build != 'true'
+        id: collect_artifacts
         run: |
-          for file in artifacts/*; do
-            filename=$(basename "$file")
-            echo "Uploading $filename as separate artifact"
-            gh run upload-artifact "$file" --name "$filename"
+          files=()
+          for f in artifacts/*; do
+            files+=("\"$f\"")
           done
-
+          printf "[%s]\n" "$(IFS=,; echo "${files[*]}")" > files.json
+          echo "list=$(cat files.json)" >> $GITHUB_OUTPUT
+        
+      - name: Upload build artifacts
+        if: env.skip_build != 'true'
+        uses: actions/upload-artifact@v4
+        strategy:
+          matrix:
+            file: ${{ fromJson(steps.collect_artifacts.outputs.list) }}
+        with:
+          name: ${{ matrix.file }}
+          path: ${{ matrix.file }}
+          if-no-files-found: error
 
 #      - name: create github release
 #        if: env.skip_build != 'true'
@@ -179,7 +191,7 @@ jobs:
 #        env:
 #          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: set release outputs
+      - name: Set release outputs
         if: env.skip_build != 'true'
         run: |
           while read output; do
