@@ -88,15 +88,17 @@ jobs:
         if: env.skip_build != 'true'
         run: |
           mkdir -p artifacts
+          WORKDIR=$GITHUB_WORKSPACE
+          SOURCE_DIR=$WORKDIR/box64-source
+
           for BUILD_TYPE in "regular" "optimized"; do
             if [[ "$BUILD_TYPE" == "optimized" && "${{ env.skip_optimized }}" == "true" ]]; then
               echo "Skipping optimized build for ${{ matrix.arch }} as DynaRec is not supported."
               continue
             fi
 
-            BUILD_DIR=build-${BUILD_TYPE}-${{ matrix.arch }}
+            BUILD_DIR=$WORKDIR/build-${BUILD_TYPE}-${{ matrix.arch }}
             mkdir -p $BUILD_DIR
-            cd $BUILD_DIR
 
             FLAGS="-DCMAKE_BUILD_TYPE=Release"
             if [[ "$BUILD_TYPE" == "optimized" ]]; then
@@ -119,7 +121,8 @@ jobs:
               CXX_COMPILER="riscv64-linux-gnu-g++"
             fi
 
-            cmake ../box64-source \
+            cd $BUILD_DIR
+            cmake $SOURCE_DIR \
               -DCMAKE_SYSTEM_NAME=Linux \
               -DCMAKE_SYSTEM_PROCESSOR=$SYSTEM_PROCESSOR \
               -DCMAKE_C_COMPILER=$C_COMPILER \
@@ -128,24 +131,22 @@ jobs:
 
             make -j$(nproc) || { echo "make failed"; exit 1; }
 
-            cd ../..
-
             OUTPUT_NAME="box64-${{ env.version }}-${BUILD_TYPE}-${{ matrix.arch }}"
 
-            # search for the built box64 binary in build and source directories
-            BINARY_PATH=$(find $BUILD_DIR ../box64-source -type f -name "box64" -executable | head -n1)
+            # search for binary using absolute paths
+            BINARY_PATH=$(find $BUILD_DIR $SOURCE_DIR -type f -name "box64" -executable | head -n1)
             if [[ -f "$BINARY_PATH" ]]; then
-              cp "$BINARY_PATH" artifacts/${OUTPUT_NAME}
+              cp "$BINARY_PATH" $WORKDIR/artifacts/${OUTPUT_NAME}
             else
-              echo "Error: box64 binary not found in $BUILD_DIR or ../box64-source"
+              echo "Error: box64 binary not found in $BUILD_DIR or $SOURCE_DIR"
               echo "Contents of $BUILD_DIR:"
               find $BUILD_DIR
-              echo "Contents of ../box64-source:"
-              find ../box64-source
+              echo "Contents of $SOURCE_DIR:"
+              find $SOURCE_DIR
               exit 1
             fi
 
-            echo "${OUTPUT_NAME}" >> release_outputs.txt
+            echo "${OUTPUT_NAME}" >> $WORKDIR/release_outputs.txt
           done
 
       - name: upload build artifacts
