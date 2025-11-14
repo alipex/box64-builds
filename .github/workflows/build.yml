@@ -1,11 +1,11 @@
-name: Build Box64
+name: Build and Release Box64
 
 on:
-  #push:
-  #  tags:
-  #    - '*'
-  #release:
-  #  types: [published]
+  push:
+    tags:
+      - '*'
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -16,7 +16,7 @@ on:
 jobs:
   build:
     name: Build Box64
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         arch: [arm64, rv64]
@@ -102,21 +102,43 @@ jobs:
 
             cmake ../box64-source $TOOLCHAIN $FLAGS
             make -j$(nproc)
-
             cd ../..
-            
+
             # Copy built binary to artifacts folder with final naming
             OUTPUT_NAME="box64-${{ env.version }}-${BUILD_TYPE}-${{ matrix.arch }}"
             cp $BUILD_DIR/box64 artifacts/${OUTPUT_NAME}
             echo "${OUTPUT_NAME}" >> release_outputs.txt
           done
 
-      - name: Upload build artifacts
+      - name: Upload build artifacts as job artifact
         if: env.skip_build != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: box64-artifacts-${{ env.version }}
           path: artifacts/*
+
+      #- name: Create GitHub Release
+      #  if: env.skip_build != 'true'
+      #  uses: softprops/action-gh-release@v1
+      #  with:
+      #    tag_name: ${{ github.ref_name || env.version }}
+      #    name: "Box64 ${{ github.ref_name || env.version }}"
+      #    body: |
+      #      Automated build for version ${{ github.ref_name || env.version }}.
+      #      Includes architectures: ARM64, RV64 (as available).
+      #      Build types: regular / optimized.
+      #    draft: false
+      #    prerelease: ${{ github.event_name != 'release' && github.event_name != 'push' }}
+      #  env:
+      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release artifacts
+        if: env.skip_build != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set release outputs
         if: env.skip_build != 'true'
@@ -124,3 +146,4 @@ jobs:
           while read output; do
             echo "release_output=${output}" >> $GITHUB_OUTPUT
           done < release_outputs.txt
+

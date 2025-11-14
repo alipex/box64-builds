@@ -1,5 +1,8 @@
 # box64-builds
 
+> [!CAUTION]
+> This is a work-in-progress. Any files in this repository or any release may not work correctly for now. You have been warned!
+
 Here you can find various versions of box64 that are automatically built upon a new release or commit to the [ptitSeb/box64](https://github.com/ptitSeb/box64) repository.
 
 ## Details regarding releases
