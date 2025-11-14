@@ -29,13 +29,30 @@ jobs:
       - name: Set version
         id: set_version
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.version }}" != "" ]]; then
-            echo "Using manually specified version: ${{ github.event.inputs.version }}"
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          # Default: manually specified version from workflow_dispatch
+          VERSION_INPUT="${{ github.event.inputs.version }}"
+          VERSION=""
+
+          # If workflow_dispatch and version specified
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "$VERSION_INPUT" ]]; then
+            VERSION="$VERSION_INPUT"
+
+          # If push to a tag
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+
+          # If release event
+          elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            VERSION="${{ github.event.release.tag_name }}"
+
+          # Otherwise fallback to latest tag in repo
           else
             latest_tag=$(git ls-remote --tags $BOX64_REPO | awk -F/ '{print $3}' | sort -V | tail -n1)
-            echo "Using latest version: $latest_tag"
-            echo "version=$latest_tag" >> $GITHUB_ENV
+            VERSION="$latest_tag"
+          fi
+
+          echo "Using version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
