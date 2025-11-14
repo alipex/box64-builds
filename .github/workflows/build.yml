@@ -149,12 +149,15 @@ jobs:
             echo "${OUTPUT_NAME}" >> $WORKDIR/release_outputs.txt
           done
 
-      - name: upload build artifacts
+      - name: upload each artifact as separate file
         if: env.skip_build != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: box64-artifacts-${{ env.version }}
-          path: artifacts/*
+        run: |
+          for file in artifacts/*; do
+            filename=$(basename "$file")
+            echo "Uploading $filename as separate artifact"
+            gh run upload-artifact "$file" --name "$filename"
+          done
+
 
 #      - name: create github release
 #        if: env.skip_build != 'true'
