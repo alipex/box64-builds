@@ -16,7 +16,7 @@ on:
 jobs:
   build:
     name: Build Box64
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         arch: [arm64, rv64]
