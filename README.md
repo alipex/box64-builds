@@ -7,15 +7,15 @@ Here you can find various versions of box64 that are automatically built upon a 
 
 ## Details regarding releases
 
-- This repository includes versions with the dynamic recompiler (introduced in box64 v0.0.6 for aarch64, and in box64 v0.2.4 for rv64gc) under the "Optimized" section.
+- This repository includes versions with the dynamic recompiler (introduced in box64 v0.0.6 for aarch64, and in box64 v0.2.4 for rv64gc) under the "DynaRec" section.
 - All releases include box32 by default, starting with box64 v0.3.2.
 
 ## Executable list
 
 Executable Name | Chip architecture | Target | Latest release | Latest commit | Version list
 ------------ | ------------- | ------------- | ------------- | ------------- | -------------
-box64-aarch64 | ARM 64-bit (aarch64), 4K pages | Generic ARM64 (aarch64) systems | [Optimized]() / [Regular]() | [Optimized]() / [Regular]() | N/A (coming soon)
-box64-rv64gc | RISC-V 64-bit (rv64gc), 4K pages | Generic RISC-V (rv64gc) systems | [Optimized]() / [Regular]() | [Optimized]() / [Regular]() | N/A (coming soon)
+box64-aarch64 | ARM 64-bit (aarch64), 4K pages | Generic ARM64 (aarch64) systems | [DynaRec]() / [Regular]() | [DynaRec]() / [Regular]() | N/A (coming soon)
+box64-rv64gc | RISC-V 64-bit (rv64gc), 4K pages | Generic RISC-V (rv64gc) systems | [DynaRec]() / [Regular]() | [DynaRec]() / [Regular]() | N/A (coming soon)
 
 Have a target that you would like to see supported? [Open an issue!](https://github.com/alipex/box64-builds/issues/)
 
