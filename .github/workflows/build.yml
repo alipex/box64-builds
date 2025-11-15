@@ -132,7 +132,6 @@ jobs:
             BINARY_PATH=$(find $BUILD_DIR $SOURCE_DIR -type f -name "box64" -executable | head -n1)
             if [[ -f "$BINARY_PATH" ]]; then
               cp "$BINARY_PATH" $WORKDIR/artifacts/${OUTPUT_NAME}
-              echo "::set-output name=${BUILD_TYPE}_artifact::artifacts/${OUTPUT_NAME}"
             else
               echo "Error: box64 binary not found in $BUILD_DIR or $SOURCE_DIR"
               echo "Contents of $BUILD_DIR:"
@@ -144,7 +143,7 @@ jobs:
           done
 
       - name: Upload regular build
-        if: env.skip_build != 'true' && exists('artifacts/box64-${{ env.version }}-regular-${{ matrix.arch }}')
+        if: env.skip_build != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: box64-${{ env.version }}-regular-${{ matrix.arch }}
@@ -152,7 +151,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload optimized build
-        if: env.skip_build != 'true' && exists('artifacts/box64-${{ env.version }}-optimized-${{ matrix.arch }}')
+        if: env.skip_build != 'true' && env.skip_optimized != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: box64-${{ env.version }}-optimized-${{ matrix.arch }}
