@@ -178,10 +178,3 @@ jobs:
       #     files: artifacts/*
       #   env:
       #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set release outputs
-        if: env.skip_build != 'true'
-        run: |
-          while read output; do
-            echo "release_output=${output}" >> $GITHUB_OUTPUT
-          done < release_outputs.txt
