@@ -1,12 +1,8 @@
 name: Build box64
 
 on:
-  #push:
-  #  branches:
-  #    - main
-  #    - master
-  #release:
-  #  types: [published]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -21,7 +17,7 @@ on:
 jobs:
   build:
     name: Build Box64
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         arch: [arm64, rv64]
@@ -32,7 +28,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Decide what to build (version/tag or commit)
-        id: set_version
+        id: set_ref
         run: |
           VERSION_INPUT="${{ github.event.inputs.version }}"
           COMMIT_INPUT="${{ github.event.inputs.commit }}"
@@ -108,13 +104,7 @@ jobs:
             fi
 
             for BOX32 in "off" "on"; do
-              # Determine artifact name
-              if [[ "${{ env.reftype }}" == "commit" ]]; then
-                REF="${{ env.ref }}"
-              else
-                REF="${{ env.ref }}"
-              fi
-
+              # Naming
               if [[ "$BUILD_TYPE" == "dynarec" ]]; then
                 TYPE_SUFFIX="dynarec"
               else
@@ -123,13 +113,13 @@ jobs:
 
               if [[ $ver_num -ge 30302 && "$BOX32" == "on" ]]; then
                 BOX32_FLAG="-DBUILD_BOX32=ON"
-                BOX32_SUFFIX="box32"
-                ARTIFACT_NAME="box64-${REF}-${{ matrix.arch }}-${TYPE_SUFFIX}-box32"
+                BOX32_SUFFIX="-box32"
               else
                 BOX32_FLAG="-DBUILD_BOX32=OFF"
                 BOX32_SUFFIX=""
-                ARTIFACT_NAME="box64-${REF}-${{ matrix.arch }}-${TYPE_SUFFIX}"
               fi
+
+              ARTIFACT_NAME="box64-${{ env.ref }}-${{ matrix.arch }}-${TYPE_SUFFIX}${BOX32_SUFFIX}"
 
               BUILD_DIR=$WORKDIR/build-${TYPE_SUFFIX}-box32${BOX32}-${{ matrix.arch }}
               mkdir -p $BUILD_DIR
@@ -179,7 +169,7 @@ jobs:
         if: env.skip_build != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: box64-artifacts-${{ env.ref }}-${{ matrix.arch }}
+          name: box64-binaries-${{ env.ref }}-${{ matrix.arch }}
           path: artifacts/*
           if-no-files-found: ignore
 
@@ -187,30 +177,41 @@ jobs:
     name: Upload binaries to GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: (github.event_name == 'release' && github.event.action == 'published') || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Checkout code (release context)
+        uses: actions/checkout@v3
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: build-artifacts
 
-      - name: Create or update a release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name || github.sha }}
-          name: "box64 ${{ github.ref_name || github.sha }}"
-          body: |
-            Automated build for:
-            - Version/tag: ${{ github.event.inputs.version }}
-            - Commit: ${{ github.event.inputs.commit }}
-          draft: false
-          prerelease: ${{ github.event_name != 'release' || github.event.action != 'published' }}
+      - name: Create or update release and upload assets (GitHub CLI)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Release tag (for published release), or make one for manual
+          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            # For manual builds, make a pre-release on chosen ref
+            TAG="${{ github.event.inputs.version || github.event.inputs.commit }}"
+            if [[ -z "${TAG}" ]]; then
+              TAG="${GITHUB_SHA}"
+            fi
+            # create tag if not present
+            git tag "${TAG}" || true
+            git push origin "${TAG}" || true
+          fi
 
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v1
-        with:
-          files: build-artifacts/*/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Create release if not present
+          gh release view "${TAG}" --repo "${{ github.repository }}" || \
+            gh release create "${TAG}" --repo "${{ github.repository }}" \
+              --title "box64 ${TAG}" \
+              --notes "Automated build for:\n${TAG}\nGitHub job: $GITHUB_RUN_ID" \
+              --prerelease
+
+          # Upload all built artifacts
+          find build-artifacts -type f -exec gh release upload "${TAG}" {} --repo "${{ github.repository }}" --clobber \;
