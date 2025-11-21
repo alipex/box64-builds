@@ -14,7 +14,7 @@ permissions:
 jobs:
   build-matrix:
     name: Build Box64 using matrix
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         arch: [aarch64, rv64gc]
