@@ -14,11 +14,15 @@ permissions:
 jobs:
   build-matrix:
     name: Build Box64 using matrix
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         arch: [aarch64, rv64gc]
         dynarec: [true, false]
+
+    outputs:
+      build_info: ${{ steps.set_build_info.outputs.build_info }}
+      version_ref: ${{ steps.set_ref.outputs.version_ref }}
 
     steps:
       - name: Checkout repository
@@ -59,6 +63,7 @@ jobs:
           fi
           echo "ref=$REF" >> $GITHUB_ENV
           echo "reftype=$REF_TYPE" >> $GITHUB_ENV
+          echo "version_ref=$REF" >> $GITHUB_OUTPUT
 
       - name: Clone box64 source
         run: |
@@ -167,12 +172,15 @@ jobs:
           FLAGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=$SYSTEM_PROCESSOR"
           FLAGS="$FLAGS -DCMAKE_C_COMPILER=$C_COMPILER -DCMAKE_CXX_COMPILER=$CXX_COMPILER"
           
+          # Set dynarec flags and suffix
           if [[ "${{ matrix.dynarec }}" == "true" ]]; then
             FLAGS="$FLAGS -DBUILD_DYNAREC=ON"
             DYNAREC_SUFFIX="-dynarec"
+            echo "Dynarec: ENABLED"
           else
             FLAGS="$FLAGS -DBUILD_DYNAREC=OFF"
             DYNAREC_SUFFIX=""
+            echo "Dynarec: DISABLED"
           fi
           
           # BOX32 support (from v0.3.2)
@@ -188,12 +196,14 @@ jobs:
           if [[ $ver_num -ge 30302 ]]; then
             FLAGS="$FLAGS -DBUILD_BOX32=ON"
             BOX32_SUFFIX="-box32"
+            echo "Box32: ENABLED"
           else
             FLAGS="$FLAGS -DBUILD_BOX32=OFF"
             BOX32_SUFFIX=""
+            echo "Box32: DISABLED (requires v0.3.2+)"
           fi
           
-          # Store suffixes in environment
+          # Store suffixes in environment for later steps
           echo "DYNAREC_SUFFIX=$DYNAREC_SUFFIX" >> $GITHUB_ENV
           echo "BOX32_SUFFIX=$BOX32_SUFFIX" >> $GITHUB_ENV
           
@@ -228,32 +238,157 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: artifacts/${{ env.ARTIFACT_NAME }}
 
-      - name: Upload to GitHub Releases
+      - name: Set build info for release
         if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
+        id: set_build_info
+        run: |
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          # Create JSON build info for this specific build
+          BUILD_INFO=$(jq -n \
+            --arg arch "${{ matrix.arch }}" \
+            --arg dynarec "${{ matrix.dynarec }}" \
+            --arg box32 "${{ env.BOX32_SUFFIX != '' }}" \
+            --arg artifact "${{ env.ARTIFACT_NAME }}" \
+            --arg date "$BUILD_DATE" \
+            '{
+              arch: $arch,
+              dynarec: $dynarec,
+              box32: $box32,
+              artifact: $artifact,
+              date: $date
+            }')
+          
+          echo "build_info=$BUILD_INFO" >> $GITHUB_OUTPUT
+
+  # Create release after all builds complete
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build-matrix
+    if: always()
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Generate release body
+        id: generate_release_body
+        run: |
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          VERSION_REF="${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}"
+          
+          # Start building the release body
+          RELEASE_BODY="# Box64 $VERSION_REF - Automated Builds"
+          RELEASE_BODY="$RELEASE_BODY\n\n"
+          RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64](https://github.com/ptitSeb/box64) version **$VERSION_REF**\n\n"
+          
+          RELEASE_BODY="$RELEASE_BODY## 📦 Available Builds\n\n"
+          RELEASE_BODY="$RELEASE_BODY| Architecture | Dynarec | Box32 | Filename |\n"
+          RELEASE_BODY="$RELEASE_BODY|-------------|---------|-------|----------|\n"
+          
+          # Collect artifacts and build table rows
+          ARTIFACTS=()
+          
+          # Try to get build info from matrix outputs first
+          BUILD_INFO_JSON='${{ toJSON(needs.build-matrix.outputs.build_info) }}'
+          if [[ "$BUILD_INFO_JSON" != "null" && "$BUILD_INFO_JSON" != "" ]]; then
+            echo "$BUILD_INFO_JSON" | jq -r '.[] | select(. != null) | "\(.arch)|\(.dynarec)|\(.box32)|\(.artifact)"' | while IFS='|' read -r arch dynarec box32 artifact; do
+              if [[ -n "$arch" && -n "$artifact" ]]; then
+                # Convert boolean to emoji for better readability
+                if [[ "$dynarec" == "true" ]]; then
+                  DYNAREC_DISPLAY="✅"
+                else
+                  DYNAREC_DISPLAY="❌"
+                fi
+                
+                if [[ "$box32" == "true" ]]; then
+                  BOX32_DISPLAY="✅"
+                else
+                  BOX32_DISPLAY="❌"
+                fi
+                
+                RELEASE_BODY="$RELEASE_BODY| $arch | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$artifact\` |\n"
+                ARTIFACTS+=("$artifact")
+              fi
+            done
+          fi
+          
+          # Fallback: if no build info, scan for artifacts
+          if [[ ${#ARTIFACTS[@]} -eq 0 ]]; then
+            echo "Using fallback artifact detection"
+            while IFS= read -r -d '' file; do
+              ARTIFACT_NAME=$(basename "$file")
+              # Parse info from filename: box64-{version}-{arch}{-dynarec}{-box32}
+              if [[ "$ARTIFACT_NAME" =~ box64-(.+)-(.+)$ ]]; then
+                VERSION_PART="${BASH_REMATCH[1]}"
+                ARCH_PART="${BASH_REMATCH[2]}"
+                
+                # Detect architecture
+                if [[ "$ARCH_PART" == *"aarch64"* ]]; then
+                  ARCH="aarch64"
+                elif [[ "$ARCH_PART" == *"rv64gc"* ]]; then
+                  ARCH="rv64gc"
+                else
+                  ARCH="unknown"
+                fi
+                
+                # Detect features from filename
+                if [[ "$ARCH_PART" == *"dynarec"* ]]; then
+                  DYNAREC_DISPLAY="✅"
+                else
+                  DYNAREC_DISPLAY="❌"
+                fi
+                
+                if [[ "$ARCH_PART" == *"box32"* ]]; then
+                  BOX32_DISPLAY="✅"
+                else
+                  BOX32_DISPLAY="❌"
+                fi
+                
+                RELEASE_BODY="$RELEASE_BODY| $ARCH | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$ARTIFACT_NAME\` |\n"
+                ARTIFACTS+=("$ARTIFACT_NAME")
+              fi
+            done < <(find release-artifacts -type f -name "box64-*" -print0)
+          fi
+          
+          RELEASE_BODY="$RELEASE_BODY\n## 🚀 Usage\n"
+          RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
+          RELEASE_BODY="$RELEASE_BODY# Download the appropriate binary for your architecture\n"
+          RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
+          RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
+          RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
+          
+          RELEASE_BODY="$RELEASE_BODY## 📋 Build Information\n"
+          RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
+          RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Source**: [ptitSeb/box64](https://github.com/ptitSeb/box64)\n\n"
+          
+          RELEASE_BODY="$RELEASE_BODY## 🔧 Feature Guide\n"
+          RELEASE_BODY="$RELEASE_BODY- **Dynarec**: Dynamic recompiler for better performance\n"
+          RELEASE_BODY="$RELEASE_BODY- **Box32**: x86 to ARM32/64 emulation (requires v0.3.2+)\n"
+          RELEASE_BODY="$RELEASE_BODY- **aarch64**: ARM64 architecture\n"
+          RELEASE_BODY="$RELEASE_BODY- **rv64gc**: RISC-V 64-bit architecture\n"
+          
+          # Store the release body
+          echo "release_body<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$RELEASE_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/${{ env.ARTIFACT_NAME }}
-          tag_name: box64-${{ env.ref }}
-          name: "Box64 ${{ env.ref }}"
-          body: |
-            Automated build of Box64 ${{ env.ref }}
-            
-            **Build Details:**
-            - Architecture: ${{ matrix.arch }}
-            - Dynarec: ${{ matrix.dynarec }}
-            - Box32: ${{ env.BOX32_SUFFIX != '' }}
-            - Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-            
-            **Source:** [ptitSeb/box64](https://github.com/ptitSeb/box64)
-            
-            **Usage:**
-            ```bash
-            chmod +x ${{ env.ARTIFACT_NAME }}
-            ./${{ env.ARTIFACT_NAME }} your_x86_application
-            ```
+          files: release-artifacts/**/*
+          tag_name: box64-${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}
+          name: "Box64 ${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}"
+          body: ${{ steps.generate_release_body.outputs.release_body }}
           draft: false
           prerelease: false
           generate_release_notes: false
-          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
