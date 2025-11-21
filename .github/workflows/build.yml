@@ -1,16 +1,10 @@
 name: Build box64
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Box64 version/tag to build (leave empty if using commit SHA)'
-        required: false
-        default: ''
-      commit:
-        description: 'Box64 commit SHA to build (leave empty to use version or latest tag)'
+        description: 'Box64 version (tag) to build (leave empty if using latest version)'
         required: false
         default: ''
 
@@ -18,203 +12,148 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build Box64
-    runs-on: ubuntu-latest
+  build-matrix:
+    name: Build Box64 using matrix
+    runs-on: self-hosted
     strategy:
       matrix:
-        arch: [arm64, rv64]
-    env:
-      BOX64_REPO: https://github.com/ptitSeb/box64.git
+        arch: [aarch64, rv64gc]
+        dynarec: [true, false]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+      
+      ## This part of the workflow installs the required dependencies based on the architecture the program is being built for.
+      ## It also sets up required tools that are necessary to start the bulding process.
+      - name: Clone box64 source, install dependencies and prepare tools before building
+        run: |
 
-      - name: Decide what to build (version/tag or commit)
+          skip_build = false
+          skip_dynarec = false
+
+          if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+          
+            # Install dependencies for the aarch64 architecture
+            sudo apt update && sudo apt install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+          elif [[ "${{ matrix.arch }}" == "rv64gc" ]]; then
+
+            # Install dependencies for the rv64gc architecture
+            sudo apt update && sudo apt install -y build-essential cmake git gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+
+          fi
+
+      - name: Decide what to build
         id: set_ref
         run: |
           VERSION_INPUT="${{ github.event.inputs.version }}"
-          COMMIT_INPUT="${{ github.event.inputs.commit }}"
-          REF=""
-          REF_TYPE=""
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "$COMMIT_INPUT" ]]; then
-            REF="$COMMIT_INPUT"
-            REF_TYPE="commit"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "$VERSION_INPUT" ]]; then
+          if [[ -n "$VERSION_INPUT" ]]; then
             REF="$VERSION_INPUT"
             REF_TYPE="version"
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            REF="${GITHUB_REF#refs/tags/}"
-            REF_TYPE="version"
           else
-            latest_tag=$(git ls-remote --tags $BOX64_REPO | awk -F/ '{print $3}' | sort -V | tail -n1)
+            latest_tag=$(git ls-remote --tags https://github.com/ptitSeb/box64 | awk -F/ '{print $3}' | grep -v '{}' | sort -V | tail -n1)
             REF="$latest_tag"
             REF_TYPE="version"
           fi
           echo "ref=$REF" >> $GITHUB_ENV
           echo "reftype=$REF_TYPE" >> $GITHUB_ENV
 
-      - name: Install dependencies
+      - name: Clone box64 source
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake git \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
-
-      - name: Clone ptitSeb/Box64 at desired ref
-        run: |
-          git clone $BOX64_REPO box64-source
-          cd box64-source
-          if [[ "${{ env.reftype }}" == "commit" ]]; then
-            git checkout ${{ env.ref }}
-          elif git rev-parse "refs/tags/${{ env.ref }}" >/dev/null 2>&1; then
+          git clone https://github.com/ptitSeb/box64.git src
+          cd src
+          if [[ "${{ env.reftype }}" == "version" ]]; then
             git checkout "tags/${{ env.ref }}"
+
           else
-            git checkout main
+            git checkout "${{ env.ref }}"
           fi
 
-      - name: Check support for flags
-        id: check_arch
+      - name: Check version support
+        id: check_support
         run: |
-          skip_build=false
-          skip_dynarec=false
           ver=$(echo ${{ env.ref }} | sed 's/v//')
           ver_num=$(echo $ver | awk -F. '{printf("%d%02d%02d",$1,$2,$3)}')
+          
+          skip_build=false
+          skip_dynarec=false
+          
           # RISC-V support from v0.1.8
-          if [[ "${{ matrix.arch }}" == "rv64" && $ver_num -lt 10800 ]]; then
+          if [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 10800 ]]; then
             skip_build=true
           fi
-          # Dynarec support
-          if [[ "${{ matrix.arch }}" == "arm64" && $ver_num -lt 6 ]]; then
-            skip_dynarec=true
-          elif [[ "${{ matrix.arch }}" == "rv64" && $ver_num -lt 204 ]]; then
-            skip_dynarec=true
-          fi
-          echo "skip_build=$skip_build" >> $GITHUB_ENV
-          echo "skip_dynarec=$skip_dynarec" >> $GITHUB_ENV
-
-      - name: Build variants
-        if: env.skip_build != 'true'
-        run: |
-          mkdir -p artifacts
-          WORKDIR=$GITHUB_WORKSPACE
-          SOURCE_DIR=$WORKDIR/box64-source
-
-          for BUILD_TYPE in "regular" "dynarec"; do
-            if [[ "$BUILD_TYPE" == "dynarec" && "${{ env.skip_dynarec }}" == "true" ]]; then
-              echo "Skipping dynarec build for ${{ matrix.arch }} as support is not available."
-              continue
+          
+          # Dynarec support checks
+          if [[ "${{ matrix.dynarec }}" == "true" ]]; then
+            if [[ "${{ matrix.arch }}" == "aarch64" && $ver_num -lt 600 ]]; then
+              skip_dynarec=true
+            elif [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 20400 ]]; then
+              skip_dynarec=true
             fi
+          fi
+          
+          echo "skip_build=$skip_build" >> $GITHUB_OUTPUT
+          echo "skip_dynarec=$skip_dynarec" >> $GITHUB_OUTPUT
 
-            for BOX32 in "off" "on"; do
-              # Naming
-              if [[ "$BUILD_TYPE" == "dynarec" ]]; then
-                TYPE_SUFFIX="dynarec"
-              else
-                TYPE_SUFFIX="regular"
-              fi
+      - name: Build box64
+        if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
+        run: |
+          WORKDIR=$GITHUB_WORKSPACE
+          SOURCE_DIR=$WORKDIR/src
+          BUILD_DIR=$WORKDIR/build-${{ matrix.arch }}-${{ matrix.dynarec }}
+          
+          mkdir -p $BUILD_DIR
+          cd $BUILD_DIR
+          
+          # Set up compiler and flags based on architecture
+          if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+            SYSTEM_PROCESSOR="aarch64"
+            C_COMPILER="aarch64-linux-gnu-gcc"
+            CXX_COMPILER="aarch64-linux-gnu-g++"
+          elif [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+            SYSTEM_PROCESSOR="riscv64"
+            C_COMPILER="riscv64-linux-gnu-gcc"
+            CXX_COMPILER="riscv64-linux-gnu-g++"
+          fi
+          
+          # Configure build
+          FLAGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=$SYSTEM_PROCESSOR"
+          FLAGS="$FLAGS -DCMAKE_C_COMPILER=$C_COMPILER -DCMAKE_CXX_COMPILER=$CXX_COMPILER"
+          
+          if [[ "${{ matrix.dynarec }}" == "true" ]]; then
+            FLAGS="$FLAGS -DBUILD_DYNAREC=ON"
+          else
+            FLAGS="$FLAGS -DBUILD_DYNAREC=OFF"
+          fi
+          
+          # BOX32 support (from v0.3.2)
+          ver=$(echo ${{ env.ref }} | sed 's/v//')
+          ver_num=$(echo $ver | awk -F. '{printf("%d%02d%02d",$1,$2,$3)}')
+          if [[ $ver_num -ge 30302 ]]; then
+            FLAGS="$FLAGS -DBUILD_BOX32=ON"
+            BOX32_SUFFIX="-box32"
+          else
+            FLAGS="$FLAGS -DBUILD_BOX32=OFF"
+            BOX32_SUFFIX=""
+          fi
+          
+          cmake $SOURCE_DIR $FLAGS || { echo "CMake configuration failed"; exit 1; }
+          make -j$(nproc) || { echo "make failed"; exit 1; }
+          
+          # Find and copy binary
+          BINARY_PATH=$(find $BUILD_DIR -type f -name "box64" -executable | head -n1)
+          if [[ -f "$BINARY_PATH" ]]; then
+            mkdir -p $WORKDIR/artifacts
+            cp "$BINARY_PATH" "$WORKDIR/artifacts/box64-${{ env.ref }}-${{ matrix.arch }}-${{ matrix.dynarec }}-${BOX32_SUFFIX}"
+          else
+            echo "Error: box64 binary not found"
+            find $BUILD_DIR
+            exit 1
+          fi
 
-              if [[ $ver_num -ge 30302 && "$BOX32" == "on" ]]; then
-                BOX32_FLAG="-DBUILD_BOX32=ON"
-                BOX32_SUFFIX="-box32"
-              else
-                BOX32_FLAG="-DBUILD_BOX32=OFF"
-                BOX32_SUFFIX=""
-              fi
-
-              ARTIFACT_NAME="box64-${{ env.ref }}-${{ matrix.arch }}-${TYPE_SUFFIX}${BOX32_SUFFIX}"
-
-              BUILD_DIR=$WORKDIR/build-${TYPE_SUFFIX}-box32${BOX32}-${{ matrix.arch }}
-              mkdir -p $BUILD_DIR
-
-              FLAGS="-DCMAKE_BUILD_TYPE=Release $BOX32_FLAG"
-              if [[ "$BUILD_TYPE" == "dynarec" ]]; then
-                FLAGS="$FLAGS -DBUILD_DYNAREC=ON"
-              else
-                FLAGS="$FLAGS -DBUILD_DYNAREC=OFF"
-              fi
-
-              if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-                SYSTEM_PROCESSOR="aarch64"
-                C_COMPILER="aarch64-linux-gnu-gcc"
-                CXX_COMPILER="aarch64-linux-gnu-g++"
-              else
-                SYSTEM_PROCESSOR="riscv64"
-                C_COMPILER="riscv64-linux-gnu-gcc"
-                CXX_COMPILER="riscv64-linux-gnu-g++"
-              fi
-
-              cd $BUILD_DIR
-              cmake $SOURCE_DIR \
-                -DCMAKE_SYSTEM_NAME=Linux \
-                -DCMAKE_SYSTEM_PROCESSOR=$SYSTEM_PROCESSOR \
-                -DCMAKE_C_COMPILER=$C_COMPILER \
-                -DCMAKE_CXX_COMPILER=$CXX_COMPILER \
-                $FLAGS || { echo "CMake configuration failed"; exit 1; }
-
-              make -j$(nproc) || { echo "make failed"; exit 1; }
-
-              BINARY_PATH=$(find $BUILD_DIR $SOURCE_DIR -type f -name "box64" -executable | head -n1)
-              if [[ -f "$BINARY_PATH" ]]; then
-                cp "$BINARY_PATH" $WORKDIR/artifacts/${ARTIFACT_NAME}
-              else
-                echo "Error: box64 binary not found in $BUILD_DIR or $SOURCE_DIR"
-                echo "Contents of $BUILD_DIR:"
-                find $BUILD_DIR
-                echo "Contents of $SOURCE_DIR:"
-                find $SOURCE_DIR
-                exit 1
-              fi
-            done
-          done
-
-      - name: Upload all artifacts
-        if: env.skip_build != 'true'
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: box64-binaries-${{ env.ref }}-${{ matrix.arch }}
-          path: artifacts/*
-          if-no-files-found: ignore
-
-  release-upload:
-    name: Upload binaries to GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Checkout code (release context)
-        uses: actions/checkout@v3
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: build-artifacts
-
-      - name: Create or update release and upload assets (GitHub CLI)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Release tag (for published release), or make one for manual
-          if [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-          else
-            # For manual builds, make a pre-release on chosen ref
-            TAG="${{ github.event.inputs.version || github.event.inputs.commit }}"
-            if [[ -z "${TAG}" ]]; then
-              TAG="${GITHUB_SHA}"
-            fi
-            # create tag if not present
-            git tag "${TAG}" || true
-            git push origin "${TAG}" || true
-          fi
-
-          # Create release if not present
-          gh release view "${TAG}" --repo "${{ github.repository }}" || \
-            gh release create "${TAG}" --repo "${{ github.repository }}" \
-              --title "box64 ${TAG}" \
-              --notes "Automated build for:\n${TAG}\nGitHub job: $GITHUB_RUN_ID" \
-              --prerelease
-
-          # Upload all built artifacts
-          find build-artifacts -type f -exec gh release upload "${TAG}" {} --repo "${{ github.repository }}" --clobber \;
+          name: box64-${{ env.ref }}-${{ matrix.arch }}-${{ matrix.dynarec }}
+          path: artifacts/

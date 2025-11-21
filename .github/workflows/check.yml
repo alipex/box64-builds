@@ -1,0 +1,61 @@
+# .github/workflows/check-releases.yml
+name: Check for new releases
+
+on:
+  schedule:
+    - cron: '0 2 1,15 * *'  # 1st and 15th at 2 AM
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-releases:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Get latest release
+      id: release
+      run: |
+        LATEST_TAG=$(curl -s "https://api.github.com/repos/ptitSeb/box64/releases/latest" | jq -r .tag_name)
+        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+        echo "Latest release: $LATEST_TAG"
+        
+    - name: Compare with last built
+      id: compare
+      run: |
+        if [ -f last_built.txt ]; then
+          LAST_BUILT=$(cat last_built.txt)
+          if [ "$LAST_BUILT" = "${{ steps.release.outputs.latest_tag }}" ]; then
+            echo "new_release=false" >> $GITHUB_OUTPUT
+            echo "No new release found (last built: $LAST_BUILT)"
+            exit 0
+          else
+            echo "New release found: ${{ steps.release.outputs.latest_tag }} (was: $LAST_BUILT)"
+            echo "new_release=true" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "First run - building: ${{ steps.release.outputs.latest_tag }}"
+          echo "new_release=true" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Trigger build workflow
+      if: steps.compare.outputs.new_release == 'true'
+      run: |
+        curl -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/dispatches \
+          -d "{\"ref\":\"main\",\"inputs\":{\"version\":\"${{ steps.release.outputs.latest_tag }}\"}}"
+        
+    - name: Update last built record
+      if: steps.compare.outputs.new_release == 'true'
+      run: |
+        echo "${{ steps.release.outputs.latest_tag }}" > last_built.txt
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add last_built.txt
+        git commit -m "Update last built to ${{ steps.release.outputs.latest_tag }}" || echo "No changes to commit"
+        git push

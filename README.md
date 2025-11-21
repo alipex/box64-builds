@@ -12,10 +12,10 @@ Here you can find various versions of box64 that are automatically built upon a 
 
 ## Executable list
 
-Executable Name | Chip architecture | Target | Latest release | Version list
------------- | ------------- | ------------- | ------------- | -------------
-box64-aarch64 | ARM 64-bit (aarch64), 4K pages | Generic ARM64 (aarch64) systems | [DynaRec]() / [Regular]() | N/A (coming soon)
-box64-rv64gc | RISC-V 64-bit (rv64gc), 4K pages | Generic RISC-V (rv64gc) systems | [DynaRec]() / [Regular]() | N/A (coming soon)
+Executable Name | Chip architecture                | Target
+--------------- | -------------------------------- | -------------------------------
+box64-aarch64   | ARM 64-bit (aarch64), 4K pages   | Generic ARM64 (aarch64) systems
+box64-rv64gc    | RISC-V 64-bit (rv64gc), 4K pages | Generic RISC-V (rv64gc) systems
 
 Have a target that you would like to see supported? [Open an issue!](https://github.com/alipex/box64-builds/issues/)
 
