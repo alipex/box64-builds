@@ -114,17 +114,17 @@ jobs:
           skip_dynarec=false
           
           # RISC-V support from v0.1.8
-          if [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 10800 ]]; then
+          if [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 108 ]]; then
             echo "WARNING: RISC-V not supported in version ${{ env.ref }} (needs v0.1.8+)"
             skip_build=true
           fi
           
           # Dynarec support checks
           if [[ "${{ matrix.dynarec }}" == "true" ]]; then
-            if [[ "${{ matrix.arch }}" == "aarch64" && $ver_num -lt 600 ]]; then
-              echo "WARNING: ARM64 dynarec not supported in version ${{ env.ref }} (needs v0.6.0+)"
+            if [[ "${{ matrix.arch }}" == "aarch64" && $ver_num -lt 6 ]]; then
+              echo "WARNING: ARM64 dynarec not supported in version ${{ env.ref }} (needs v0.0.6+)"
               skip_dynarec=true
-            elif [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 20400 ]]; then
+            elif [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 204 ]]; then
               echo "WARNING: RISC-V dynarec not supported in version ${{ env.ref }} (needs v0.2.4+)"
               skip_dynarec=true
             fi
