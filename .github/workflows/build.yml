@@ -24,71 +24,102 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
       
-      ## This part of the workflow installs the required dependencies based on the architecture the program is being built for.
-      ## It also sets up required tools that are necessary to start the bulding process.
-      - name: Clone box64 source, install dependencies and prepare tools before building
+      - name: Install dependencies
         run: |
-
-          skip_build = false
-          skip_dynarec = false
-
+          set -e
+          echo "Installing dependencies for ${{ matrix.arch }}..."
           if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
-          
-            # Install dependencies for the aarch64 architecture
-            sudo apt update && sudo apt install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
+            sudo apt update || { echo "Failed to update apt packages"; exit 1; }
+            sudo apt install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu || { echo "Failed to install aarch64 dependencies"; exit 1; }
           elif [[ "${{ matrix.arch }}" == "rv64gc" ]]; then
-
-            # Install dependencies for the rv64gc architecture
-            sudo apt update && sudo apt install -y build-essential cmake git gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
-
+            sudo apt update || { echo "Failed to update apt packages"; exit 1; }
+            sudo apt install -y build-essential cmake git gcc-riscv64-linux-gnu g++-riscv64-linux-gnu || { echo "Failed to install RISC-V dependencies"; exit 1; }
           fi
+          echo "Dependencies installed successfully"
 
-      - name: Decide what to build
+      - name: Determine build version
         id: set_ref
         run: |
+          set -e
           VERSION_INPUT="${{ github.event.inputs.version }}"
           if [[ -n "$VERSION_INPUT" ]]; then
             REF="$VERSION_INPUT"
             REF_TYPE="version"
+            echo "Using provided version: $REF"
           else
-            latest_tag=$(git ls-remote --tags https://github.com/ptitSeb/box64 | awk -F/ '{print $3}' | grep -v '{}' | sort -V | tail -n1)
+            echo "Fetching latest tag from box64 repository..."
+            latest_tag=$(git ls-remote --tags https://github.com/ptitSeb/box64 | awk -F/ '{print $3}' | grep -v '{}' | sort -V | tail -n1) || { echo "Failed to fetch latest tag"; exit 1; }
+            if [[ -z "$latest_tag" ]]; then
+              echo "ERROR: Could not determine latest tag"
+              exit 1
+            fi
             REF="$latest_tag"
             REF_TYPE="version"
+            echo "Using latest tag: $REF"
           fi
           echo "ref=$REF" >> $GITHUB_ENV
           echo "reftype=$REF_TYPE" >> $GITHUB_ENV
 
       - name: Clone box64 source
         run: |
-          git clone https://github.com/ptitSeb/box64.git src
+          set -e
+          echo "Cloning box64 repository..."
+          git clone https://github.com/ptitSeb/box64.git src || { echo "Failed to clone box64 repository"; exit 1; }
+          
           cd src
+          echo "Checking out version: ${{ env.ref }}"
+          
           if [[ "${{ env.reftype }}" == "version" ]]; then
-            git checkout "tags/${{ env.ref }}"
-
+            if git rev-parse "refs/tags/${{ env.ref }}" >/dev/null 2>&1; then
+              git checkout "tags/${{ env.ref }}" || { echo "Failed to checkout tag ${{ env.ref }}"; exit 1; }
+            else
+              echo "ERROR: Tag '${{ env.ref }}' does not exist"
+              exit 1
+            fi
           else
-            git checkout "${{ env.ref }}"
+            git checkout "${{ env.ref }}" || { echo "Failed to checkout commit ${{ env.ref }}"; exit 1; }
           fi
+          echo "Successfully checked out ${{ env.ref }}"
 
       - name: Check version support
         id: check_support
         run: |
-          ver=$(echo ${{ env.ref }} | sed 's/v//')
-          ver_num=$(echo $ver | awk -F. '{printf("%d%02d%02d",$1,$2,$3)}')
+          set -e
+          echo "Checking version support for ${{ env.ref }}..."
+          
+          # Extract version number safely
+          if [[ ! "${{ env.ref }}" =~ ^v?[0-9] ]]; then
+            echo "ERROR: Invalid version format: ${{ env.ref }}"
+            exit 1
+          fi
+          
+          ver=$(echo "${{ env.ref }}" | sed 's/^v//')
+          major=$(echo "$ver" | awk -F. '{print $1}')
+          minor=$(echo "$ver" | awk -F. '{print $2}')
+          patch=$(echo "$ver" | awk -F. '{print $3}')
+          major=${major:-0}
+          minor=${minor:-0}
+          patch=${patch:-0}
+          ver_num=$(( major * 10000 + minor * 100 + patch ))
+          
+          echo "Version components: major=$major, minor=$minor, patch=$patch, numeric=$ver_num"
           
           skip_build=false
           skip_dynarec=false
           
           # RISC-V support from v0.1.8
           if [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 10800 ]]; then
+            echo "WARNING: RISC-V not supported in version ${{ env.ref }} (needs v0.1.8+)"
             skip_build=true
           fi
           
           # Dynarec support checks
           if [[ "${{ matrix.dynarec }}" == "true" ]]; then
             if [[ "${{ matrix.arch }}" == "aarch64" && $ver_num -lt 600 ]]; then
+              echo "WARNING: ARM64 dynarec not supported in version ${{ env.ref }} (needs v0.6.0+)"
               skip_dynarec=true
             elif [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 20400 ]]; then
+              echo "WARNING: RISC-V dynarec not supported in version ${{ env.ref }} (needs v0.2.4+)"
               skip_dynarec=true
             fi
           fi
@@ -99,11 +130,20 @@ jobs:
       - name: Build box64
         if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
         run: |
+          set -e
+          echo "Starting build for ${{ matrix.arch }} (dynarec: ${{ matrix.dynarec }})..."
+          
           WORKDIR=$GITHUB_WORKSPACE
           SOURCE_DIR=$WORKDIR/src
           BUILD_DIR=$WORKDIR/build-${{ matrix.arch }}-${{ matrix.dynarec }}
           
-          mkdir -p $BUILD_DIR
+          # Verify source directory exists
+          if [[ ! -d "$SOURCE_DIR" ]]; then
+            echo "ERROR: Source directory $SOURCE_DIR does not exist"
+            exit 1
+          fi
+          
+          mkdir -p $BUILD_DIR || { echo "Failed to create build directory"; exit 1; }
           cd $BUILD_DIR
           
           # Set up compiler and flags based on architecture
@@ -111,10 +151,16 @@ jobs:
             SYSTEM_PROCESSOR="aarch64"
             C_COMPILER="aarch64-linux-gnu-gcc"
             CXX_COMPILER="aarch64-linux-gnu-g++"
-          elif [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+          elif [[ "${{ matrix.arch }}" == "rv64gc" ]]; then
             SYSTEM_PROCESSOR="riscv64"
             C_COMPILER="riscv64-linux-gnu-gcc"
             CXX_COMPILER="riscv64-linux-gnu-g++"
+          fi
+          
+          # Verify compilers are available
+          if ! command -v "$C_COMPILER" &> /dev/null; then
+            echo "ERROR: Compiler $C_COMPILER not found"
+            exit 1
           fi
           
           # Configure build
@@ -123,13 +169,22 @@ jobs:
           
           if [[ "${{ matrix.dynarec }}" == "true" ]]; then
             FLAGS="$FLAGS -DBUILD_DYNAREC=ON"
+            DYNAREC_SUFFIX="-dynarec"
           else
             FLAGS="$FLAGS -DBUILD_DYNAREC=OFF"
+            DYNAREC_SUFFIX=""
           fi
           
           # BOX32 support (from v0.3.2)
-          ver=$(echo ${{ env.ref }} | sed 's/v//')
-          ver_num=$(echo $ver | awk -F. '{printf("%d%02d%02d",$1,$2,$3)}')
+          ver=$(echo "${{ env.ref }}" | sed 's/^v//')
+          major=$(echo "$ver" | awk -F. '{print $1}')
+          minor=$(echo "$ver" | awk -F. '{print $2}')
+          patch=$(echo "$ver" | awk -F. '{print $3}')
+          major=${major:-0}
+          minor=${minor:-0}
+          patch=${patch:-0}
+          ver_num=$(( major * 10000 + minor * 100 + patch ))
+          
           if [[ $ver_num -ge 30302 ]]; then
             FLAGS="$FLAGS -DBUILD_BOX32=ON"
             BOX32_SUFFIX="-box32"
@@ -138,22 +193,67 @@ jobs:
             BOX32_SUFFIX=""
           fi
           
+          # Store suffixes in environment
+          echo "DYNAREC_SUFFIX=$DYNAREC_SUFFIX" >> $GITHUB_ENV
+          echo "BOX32_SUFFIX=$BOX32_SUFFIX" >> $GITHUB_ENV
+          
+          echo "Running cmake with flags: $FLAGS"
           cmake $SOURCE_DIR $FLAGS || { echo "CMake configuration failed"; exit 1; }
+          
+          echo "Running make..."
           make -j$(nproc) || { echo "make failed"; exit 1; }
           
           # Find and copy binary
+          echo "Locating built binary..."
           BINARY_PATH=$(find $BUILD_DIR -type f -name "box64" -executable | head -n1)
           if [[ -f "$BINARY_PATH" ]]; then
-            mkdir -p $WORKDIR/artifacts
-            cp "$BINARY_PATH" "$WORKDIR/artifacts/box64-${{ env.ref }}-${{ matrix.arch }}-${{ matrix.dynarec }}-${BOX32_SUFFIX}"
+            mkdir -p $WORKDIR/artifacts || { echo "Failed to create artifacts directory"; exit 1; }
+            ARTIFACT_NAME="box64-${{ env.ref }}-${{ matrix.arch }}${DYNAREC_SUFFIX}${BOX32_SUFFIX}"
+            cp "$BINARY_PATH" "$WORKDIR/artifacts/$ARTIFACT_NAME" || { echo "Failed to copy binary"; exit 1; }
+            echo "Build successful: $ARTIFACT_NAME"
+            
+            # Store artifact name for upload step
+            echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
           else
-            echo "Error: box64 binary not found"
-            find $BUILD_DIR
+            echo "ERROR: box64 binary not found in $BUILD_DIR"
+            echo "Build directory contents:"
+            find $BUILD_DIR -type f | head -20
             exit 1
           fi
 
-      - name: Upload artifacts
+      - name: Upload to GitHub Actions Artifacts
+        if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: box64-${{ env.ref }}-${{ matrix.arch }}-${{ matrix.dynarec }}
-          path: artifacts/
+          name: ${{ env.ARTIFACT_NAME }}
+          path: artifacts/${{ env.ARTIFACT_NAME }}
+
+      - name: Upload to GitHub Releases
+        if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/${{ env.ARTIFACT_NAME }}
+          tag_name: box64-${{ env.ref }}
+          name: "Box64 ${{ env.ref }}"
+          body: |
+            Automated build of Box64 ${{ env.ref }}
+            
+            **Build Details:**
+            - Architecture: ${{ matrix.arch }}
+            - Dynarec: ${{ matrix.dynarec }}
+            - Box32: ${{ env.BOX32_SUFFIX != '' }}
+            - Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            
+            **Source:** [ptitSeb/box64](https://github.com/ptitSeb/box64)
+            
+            **Usage:**
+            ```bash
+            chmod +x ${{ env.ARTIFACT_NAME }}
+            ./${{ env.ARTIFACT_NAME }} your_x86_application
+            ```
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          append_body: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
