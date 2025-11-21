@@ -359,27 +359,20 @@ jobs:
           
           RELEASE_BODY="$RELEASE_BODY\n## 🚀 Usage\n"
           RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
-          RELEASE_BODY="$RELEASE_BODY# Download the appropriate binary for your architecture\n"
+          RELEASE_BODY="$RELEASE_BODY# Download the appropriate binary for your architecture, then run this command in the terminal:\n"
           RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
           RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
           RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
           
-          RELEASE_BODY="$RELEASE_BODY## 📋 Build Information\n"
+          RELEASE_BODY="$RELEASE_BODY## Build Information\n"
           RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
           RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
-          RELEASE_BODY="$RELEASE_BODY- **Source**: [ptitSeb/box64](https://github.com/ptitSeb/box64)\n\n"
-          
-          RELEASE_BODY="$RELEASE_BODY## 🔧 Feature Guide\n"
-          RELEASE_BODY="$RELEASE_BODY- **Dynarec**: Dynamic recompiler for better performance\n"
-          RELEASE_BODY="$RELEASE_BODY- **Box32**: x86 to ARM32/64 emulation (requires v0.3.2+)\n"
-          RELEASE_BODY="$RELEASE_BODY- **aarch64**: ARM64 architecture\n"
-          RELEASE_BODY="$RELEASE_BODY- **rv64gc**: RISC-V 64-bit architecture\n"
           
           # Store the release body
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
           echo -e "$RELEASE_BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
