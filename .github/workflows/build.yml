@@ -266,7 +266,8 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: build-matrix
-    if: always()
+    # Only create release if ALL matrix jobs succeeded
+    if: needs.build-matrix.result == 'success'
     
     steps:
       - name: Checkout repository
@@ -288,7 +289,7 @@ jobs:
           RELEASE_BODY="$RELEASE_BODY\n\n"
           RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64](https://github.com/ptitSeb/box64) version **$VERSION_REF**\n\n"
           
-          RELEASE_BODY="$RELEASE_BODY## 📦 Available Builds\n\n"
+          RELEASE_BODY="$RELEASE_BODY## Available Builds\n\n"
           RELEASE_BODY="$RELEASE_BODY| Architecture | Dynarec | Box32 | Filename |\n"
           RELEASE_BODY="$RELEASE_BODY|-------------|---------|-------|----------|\n"
           
@@ -300,17 +301,17 @@ jobs:
           if [[ "$BUILD_INFO_JSON" != "null" && "$BUILD_INFO_JSON" != "" ]]; then
             echo "$BUILD_INFO_JSON" | jq -r '.[] | select(. != null) | "\(.arch)|\(.dynarec)|\(.box32)|\(.artifact)"' | while IFS='|' read -r arch dynarec box32 artifact; do
               if [[ -n "$arch" && -n "$artifact" ]]; then
-                # Convert boolean to emoji for better readability
+                # Convert boolean to yes/no
                 if [[ "$dynarec" == "true" ]]; then
-                  DYNAREC_DISPLAY="✅"
+                  DYNAREC_DISPLAY="yes"
                 else
-                  DYNAREC_DISPLAY="❌"
+                  DYNAREC_DISPLAY="no"
                 fi
                 
                 if [[ "$box32" == "true" ]]; then
-                  BOX32_DISPLAY="✅"
+                  BOX32_DISPLAY="yes"
                 else
-                  BOX32_DISPLAY="❌"
+                  BOX32_DISPLAY="no"
                 fi
                 
                 RELEASE_BODY="$RELEASE_BODY| $arch | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$artifact\` |\n"
@@ -340,15 +341,15 @@ jobs:
                 
                 # Detect features from filename
                 if [[ "$ARCH_PART" == *"dynarec"* ]]; then
-                  DYNAREC_DISPLAY="✅"
+                  DYNAREC_DISPLAY="yes"
                 else
-                  DYNAREC_DISPLAY="❌"
+                  DYNAREC_DISPLAY="no"
                 fi
                 
                 if [[ "$ARCH_PART" == *"box32"* ]]; then
-                  BOX32_DISPLAY="✅"
+                  BOX32_DISPLAY="yes"
                 else
-                  BOX32_DISPLAY="❌"
+                  BOX32_DISPLAY="no"
                 fi
                 
                 RELEASE_BODY="$RELEASE_BODY| $ARCH | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$ARTIFACT_NAME\` |\n"
@@ -357,16 +358,16 @@ jobs:
             done < <(find release-artifacts -type f -name "box64-*" -print0)
           fi
           
-          RELEASE_BODY="$RELEASE_BODY\n## 🚀 Usage\n"
+          RELEASE_BODY="$RELEASE_BODY\n## Usage\n"
           RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
-          RELEASE_BODY="$RELEASE_BODY# Download the appropriate binary for your architecture, then run this command in the terminal:\n"
           RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
           RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
           RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
           
           RELEASE_BODY="$RELEASE_BODY## Build Information\n"
-          RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
-          RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Built on**: $BUILD_DATE\n"
+          RELEASE_BODY="$RELEASE_BODY- **Action workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Source**: [ptitSeb/box64](https://github.com/ptitSeb/box64/releases/latest)\n"
           
           # Store the release body
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
