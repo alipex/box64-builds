@@ -175,11 +175,11 @@ jobs:
           
           # Set dynarec flags and suffix
           if [[ "${{ matrix.dynarec }}" == "true" ]]; then
-            FLAGS="$FLAGS -DBUILD_DYNAREC=ON"
+            FLAGS="$FLAGS -DARM64=1 -DARM_DYNAREC=ON"
             DYNAREC_SUFFIX="-dynarec"
             echo "Dynarec: ENABLED"
           else
-            FLAGS="$FLAGS -DBUILD_DYNAREC=OFF"
+            FLAGS="$FLAGS -DARM64=1"
             DYNAREC_SUFFIX=""
             echo "Dynarec: DISABLED"
           fi
@@ -195,11 +195,11 @@ jobs:
           ver_num=$(( major * 10000 + minor * 100 + patch ))
           
           if [[ $ver_num -ge 30302 ]]; then
-            FLAGS="$FLAGS -DBUILD_BOX32=ON"
+            FLAGS="$FLAGS -DBOX32=ON -DBOX32_BINFMT=ON"
             BOX32_SUFFIX="-box32"
             echo "Box32: ENABLED"
           else
-            FLAGS="$FLAGS -DBUILD_BOX32=OFF"
+            FLAGS="$FLAGS -DBOX32=OFF"
             BOX32_SUFFIX=""
             echo "Box32: DISABLED (requires v0.3.2+)"
           fi
