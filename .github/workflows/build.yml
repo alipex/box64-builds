@@ -311,9 +311,9 @@ jobs:
           VERSION_REF="${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}"
           
           # Start building the release body
-          RELEASE_BODY="# Box64 $VERSION_REF - Automated Builds"
+          RELEASE_BODY="# Box64 $VERSION_REF"
           RELEASE_BODY="$RELEASE_BODY\n\n"
-          RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n\n"
+          RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/${{ github.event.inputs.version }})\n\n"
           
           RELEASE_BODY="$RELEASE_BODY## Available Builds\n\n"
           RELEASE_BODY="$RELEASE_BODY| Architecture | Dynarec | Box32 | Filename |\n"
@@ -390,16 +390,10 @@ jobs:
             exit 1
           fi
           
-          RELEASE_BODY="$RELEASE_BODY\n## Usage\n"
-          RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
-          RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
-          RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
-          RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
-          
-          RELEASE_BODY="$RELEASE_BODY## Build Information\n"
-          RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
-          RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
-          RELEASE_BODY="$RELEASE_BODY- **Source**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n"
+          RELEASE_BODY="$RELEASE_BODY## Build info\n"
+          RELEASE_BODY="$RELEASE_BODY- **Build date**: $BUILD_DATE\n"
+          RELEASE_BODY="$RELEASE_BODY- **Action workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Box64 release**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/${{ github.event.inputs.version }})\n"
           
           # Store the release body
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
