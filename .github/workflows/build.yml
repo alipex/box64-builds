@@ -133,7 +133,7 @@ jobs:
           echo "skip_build=$skip_build" >> $GITHUB_OUTPUT
           echo "skip_dynarec=$skip_dynarec" >> $GITHUB_OUTPUT
 
-            - name: Build box64
+      - name: Build box64
         if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
         run: |
           set -e
