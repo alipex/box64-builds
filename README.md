@@ -10,9 +10,11 @@ Here you can find various versions of box64 that are automatically built upon a 
 - This repository includes versions with the dynamic recompiler (introduced in box64 v0.0.6 for aarch64, and in box64 v0.2.4 for rv64gc) under the "DynaRec" section.
 - All releases include box32 by default, starting with box64 v0.3.2.
 
-## Executable list
+## Downloads
 
 Downloads can be found under the [Releases tab.](https://github.com/alipex/box64-builds/releases)
+
+### Supported targets
 
 Executable Name | Chip architecture                | Target
 --------------- | -------------------------------- | -------------------------------

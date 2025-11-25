@@ -313,96 +313,76 @@ jobs:
           fi
 
       - name: Generate release body
-        if: steps.check_artifacts.outputs.artifacts_exist == 'true'
         id: generate_release_body
         run: |
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           VERSION_REF="${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}"
           
           # Start building the release body
-          RELEASE_BODY="# Box64 $VERSION_REF"
+          RELEASE_BODY="# Box64 $VERSION_REF - Automated Builds"
           RELEASE_BODY="$RELEASE_BODY\n\n"
-          RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/${{ github.event.inputs.version }})\n\n"
+          RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n\n"
           
           RELEASE_BODY="$RELEASE_BODY## Available Builds\n\n"
           RELEASE_BODY="$RELEASE_BODY| Architecture | Dynarec | Box32 | Filename |\n"
-          RELEASE_BODY="$RELEASE_BODY|-------------|---------|-------|----------|\n"
+          RELEASE_BODY="$RELEASE_BODY|--------------|---------|-------|----------|\n"
           
-          # Collect only successful builds
+          # Collect only successful builds by scanning actual artifacts
           SUCCESSFUL_BUILDS=()
           
-          # Get build info from matrix outputs and filter only successful ones
-          BUILD_INFO_JSON='${{ toJSON(needs.build-matrix.outputs.build_info) }}'
-          if [[ "$BUILD_INFO_JSON" != "null" && "$BUILD_INFO_JSON" != "" ]]; then
-            echo "$BUILD_INFO_JSON" | jq -r '.[] | select(. != null) | "\(.arch)|\(.dynarec)|\(.box32)|\(.artifact)"' | while IFS='|' read -r arch dynarec box32 artifact; do
-              if [[ -n "$arch" && -n "$artifact" ]]; then
-                # Convert boolean to yes/no
-                if [[ "$dynarec" == "true" ]]; then
-                  DYNAREC_DISPLAY="yes"
-                else
-                  DYNAREC_DISPLAY="no"
-                fi
-                
-                if [[ "$box32" == "true" ]]; then
-                  BOX32_DISPLAY="yes"
-                else
-                  BOX32_DISPLAY="no"
-                fi
-                
-                RELEASE_BODY="$RELEASE_BODY| $arch | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$artifact\` |\n"
-                SUCCESSFUL_BUILDS+=("$artifact")
+          echo "Scanning for built artifacts..."
+          while IFS= read -r -d '' file; do
+            ARTIFACT_NAME=$(basename "$file")
+            echo "Found artifact: $ARTIFACT_NAME"
+            
+            # Parse info from filename: box64-{version}-{arch}{-dynarec}{-box32}
+            if [[ "$ARTIFACT_NAME" =~ box64-(.+)-(.+)$ ]]; then
+              VERSION_PART="${BASH_REMATCH[1]}"
+              ARCH_PART="${BASH_REMATCH[2]}"
+              
+              # Detect architecture
+              if [[ "$ARCH_PART" == *"aarch64"* ]]; then
+                ARCH="aarch64"
+              elif [[ "$ARCH_PART" == *"rv64gc"* ]]; then
+                ARCH="rv64gc"
+              else
+                ARCH="unknown"
               fi
-            done
-          fi
-          
-          # Fallback: if no build info, scan for actual artifacts
-          if [[ ${#SUCCESSFUL_BUILDS[@]} -eq 0 ]]; then
-            echo "Using fallback artifact detection"
-            while IFS= read -r -d '' file; do
-              ARTIFACT_NAME=$(basename "$file")
-              # Parse info from filename: box64-{version}-{arch}{-dynarec}{-box32}
-              if [[ "$ARTIFACT_NAME" =~ box64-(.+)-(.+)$ ]]; then
-                VERSION_PART="${BASH_REMATCH[1]}"
-                ARCH_PART="${BASH_REMATCH[2]}"
-                
-                # Detect architecture
-                if [[ "$ARCH_PART" == *"aarch64"* ]]; then
-                  ARCH="aarch64"
-                elif [[ "$ARCH_PART" == *"rv64gc"* ]]; then
-                  ARCH="rv64gc"
-                else
-                  ARCH="unknown"
-                fi
-                
-                # Detect features from filename
-                if [[ "$ARCH_PART" == *"dynarec"* ]]; then
-                  DYNAREC_DISPLAY="yes"
-                else
-                  DYNAREC_DISPLAY="no"
-                fi
-                
-                if [[ "$ARCH_PART" == *"box32"* ]]; then
-                  BOX32_DISPLAY="yes"
-                else
-                  BOX32_DISPLAY="no"
-                fi
-                
-                RELEASE_BODY="$RELEASE_BODY| $ARCH | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$ARTIFACT_NAME\` |\n"
-                SUCCESSFUL_BUILDS+=("$ARTIFACT_NAME")
+              
+              # Detect features from filename
+              if [[ "$ARCH_PART" == *"dynarec"* ]]; then
+                DYNAREC_DISPLAY="yes"
+              else
+                DYNAREC_DISPLAY="no"
               fi
-            done < <(find release-artifacts -type f -name "box64-*" -print0)
-          fi
+              
+              if [[ "$ARCH_PART" == *"box32"* ]]; then
+                BOX32_DISPLAY="yes"
+              else
+                BOX32_DISPLAY="no"
+              fi
+              
+              RELEASE_BODY="$RELEASE_BODY| $ARCH | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$ARTIFACT_NAME\` |\n"
+              SUCCESSFUL_BUILDS+=("$ARTIFACT_NAME")
+            fi
+          done < <(find release-artifacts -type f -name "box64-*" -print0)
           
-          # If no successful builds were found after all checks, skip release
+          # If no successful builds were found, skip release
           if [[ ${#SUCCESSFUL_BUILDS[@]} -eq 0 ]]; then
             echo "No successful builds found, cannot create release"
             exit 1
           fi
           
-          RELEASE_BODY="$RELEASE_BODY## Build info\n"
-          RELEASE_BODY="$RELEASE_BODY- **Build date**: $BUILD_DATE\n"
-          RELEASE_BODY="$RELEASE_BODY- **Action workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
-          RELEASE_BODY="$RELEASE_BODY- **Box64 release**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/${{ github.event.inputs.version }})\n"
+          RELEASE_BODY="$RELEASE_BODY\n## Usage\n"
+          RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
+          RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
+          RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
+          RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
+          
+          RELEASE_BODY="$RELEASE_BODY## Build Information\n"
+          RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
+          RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Source**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n"
           
           # Store the release body
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
