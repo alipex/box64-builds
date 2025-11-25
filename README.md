@@ -12,6 +12,8 @@ Here you can find various versions of box64 that are automatically built upon a 
 
 ## Executable list
 
+Downloads can be found under the [Releases tab.](https://github.com/alipex/box64-builds/releases)
+
 Executable Name | Chip architecture                | Target
 --------------- | -------------------------------- | -------------------------------
 box64-aarch64   | ARM 64-bit (aarch64), 4K pages   | Generic ARM64 (aarch64) systems

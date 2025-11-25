@@ -133,7 +133,7 @@ jobs:
           echo "skip_build=$skip_build" >> $GITHUB_OUTPUT
           echo "skip_dynarec=$skip_dynarec" >> $GITHUB_OUTPUT
 
-      - name: Build box64
+            - name: Build box64
         if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
         run: |
           set -e
@@ -152,37 +152,46 @@ jobs:
           mkdir -p $BUILD_DIR || { echo "Failed to create build directory"; exit 1; }
           cd $BUILD_DIR
           
-          # Set up compiler and flags based on architecture
+          # Set up compiler based on architecture
           if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
             SYSTEM_PROCESSOR="aarch64"
             C_COMPILER="aarch64-linux-gnu-gcc"
-            CXX_COMPILER="aarch64-linux-gnu-g++"
+            # ARM64 specific flags
+            if [[ "${{ matrix.dynarec }}" == "true" ]]; then
+              FLAGS="-DARM_DYNAREC=ON"
+              DYNAREC_SUFFIX="-dynarec"
+              echo "ARM64 Dynarec: ENABLED"
+            else
+              FLAGS=""
+              DYNAREC_SUFFIX=""
+              echo "ARM64 Dynarec: DISABLED"
+            fi
           elif [[ "${{ matrix.arch }}" == "rv64gc" ]]; then
             SYSTEM_PROCESSOR="riscv64"
             C_COMPILER="riscv64-linux-gnu-gcc"
-            CXX_COMPILER="riscv64-linux-gnu-g++"
+            # RISC-V specific flags
+            if [[ "${{ matrix.dynarec }}" == "true" ]]; then
+              FLAGS="-DRV64_DYNAREC=ON"
+              DYNAREC_SUFFIX="-dynarec"
+              echo "RISC-V Dynarec: ENABLED"
+            else
+              FLAGS=""
+              DYNAREC_SUFFIX=""
+              echo "RISC-V Dynarec: DISABLED"
+            fi
           fi
           
-          # Verify compilers are available
+          # Verify compiler is available
           if ! command -v "$C_COMPILER" &> /dev/null; then
             echo "ERROR: Compiler $C_COMPILER not found"
             exit 1
           fi
           
-          # Configure build
-          FLAGS="-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=$SYSTEM_PROCESSOR"
-          FLAGS="$FLAGS -DCMAKE_C_COMPILER=$C_COMPILER -DCMAKE_CXX_COMPILER=$CXX_COMPILER"
-          
-          # Set dynarec flags and suffix
-          if [[ "${{ matrix.dynarec }}" == "true" ]]; then
-            FLAGS="$FLAGS -DARM64=1 -DARM_DYNAREC=ON"
-            DYNAREC_SUFFIX="-dynarec"
-            echo "Dynarec: ENABLED"
-          else
-            FLAGS="$FLAGS -DARM64=1"
-            DYNAREC_SUFFIX=""
-            echo "Dynarec: DISABLED"
-          fi
+          # Base build configuration - ONLY C compiler, no C++
+          FLAGS="$FLAGS -DCMAKE_BUILD_TYPE=Release"
+          FLAGS="$FLAGS -DCMAKE_SYSTEM_NAME=Linux"
+          FLAGS="$FLAGS -DCMAKE_SYSTEM_PROCESSOR=$SYSTEM_PROCESSOR"
+          FLAGS="$FLAGS -DCMAKE_C_COMPILER=$C_COMPILER"
           
           # BOX32 support (from v0.3.2)
           ver=$(echo "${{ env.ref }}" | sed 's/^v//')
@@ -194,7 +203,7 @@ jobs:
           patch=${patch:-0}
           ver_num=$(( major * 10000 + minor * 100 + patch ))
           
-          if [[ $ver_num -ge 30302 ]]; then
+          if [[ $ver_num -ge 302 ]]; then  # v0.3.2+
             FLAGS="$FLAGS -DBOX32=ON -DBOX32_BINFMT=ON"
             BOX32_SUFFIX="-box32"
             echo "Box32: ENABLED"
