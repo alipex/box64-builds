@@ -312,7 +312,7 @@ jobs:
             echo "artifacts_exist=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate release body
+            - name: Generate release body
         id: generate_release_body
         run: |
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
@@ -324,8 +324,8 @@ jobs:
           RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n\n"
           
           RELEASE_BODY="$RELEASE_BODY## Available Builds\n\n"
-          RELEASE_BODY="$RELEASE_BODY| Architecture | Dynarec | Box32 | Filename |\n"
-          RELEASE_BODY="$RELEASE_BODY|--------------|---------|-------|----------|\n"
+          RELEASE_BODY="$RELEASE_BODY| Executable name | Chip architecture | Target | DynaRec | Box32 |\n"
+          RELEASE_BODY="$RELEASE_BODY|-----------------|-------------------|--------|---------|-------|\n"
           
           # Collect only successful builds by scanning actual artifacts
           SUCCESSFUL_BUILDS=()
@@ -340,29 +340,32 @@ jobs:
               VERSION_PART="${BASH_REMATCH[1]}"
               ARCH_PART="${BASH_REMATCH[2]}"
               
-              # Detect architecture
+              # Detect architecture and set descriptions
               if [[ "$ARCH_PART" == *"aarch64"* ]]; then
-                ARCH="aarch64"
+                ARCH="ARM 64-bit (aarch64), 4K pages"
+                TARGET="Generic ARM64 (aarch64) systems"
               elif [[ "$ARCH_PART" == *"rv64gc"* ]]; then
-                ARCH="rv64gc"
+                ARCH="RISC-V 64-bit (rv64gc), 4K pages"
+                TARGET="Generic RISC-V (rv64gc) systems"
               else
                 ARCH="unknown"
+                TARGET="unknown"
               fi
               
               # Detect features from filename
               if [[ "$ARCH_PART" == *"dynarec"* ]]; then
-                DYNAREC_DISPLAY="yes"
+                DYNAREC_DISPLAY="✅"
               else
-                DYNAREC_DISPLAY="no"
+                DYNAREC_DISPLAY="❌"
               fi
               
               if [[ "$ARCH_PART" == *"box32"* ]]; then
-                BOX32_DISPLAY="yes"
+                BOX32_DISPLAY="✅"
               else
-                BOX32_DISPLAY="no"
+                BOX32_DISPLAY="❌"
               fi
               
-              RELEASE_BODY="$RELEASE_BODY| $ARCH | $DYNAREC_DISPLAY | $BOX32_DISPLAY | \`$ARTIFACT_NAME\` |\n"
+              RELEASE_BODY="$RELEASE_BODY| \`$ARTIFACT_NAME\` | $ARCH | $TARGET | $DYNAREC_DISPLAY | $BOX32_DISPLAY |\n"
               SUCCESSFUL_BUILDS+=("$ARTIFACT_NAME")
             fi
           done < <(find release-artifacts -type f -name "box64-*" -print0)
@@ -373,16 +376,10 @@ jobs:
             exit 1
           fi
           
-          RELEASE_BODY="$RELEASE_BODY\n## Usage\n"
-          RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
-          RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
-          RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
-          RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
-          
-          RELEASE_BODY="$RELEASE_BODY## Build Information\n"
-          RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
+          RELEASE_BODY="$RELEASE_BODY## About this build\n"
+          RELEASE_BODY="$RELEASE_BODY- **Build date**: $BUILD_DATE\n"
           RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
-          RELEASE_BODY="$RELEASE_BODY- **Source**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Source code**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/$VERSION_REF)\n"
           
           # Store the release body
           echo "release_body<<EOF" >> $GITHUB_OUTPUT

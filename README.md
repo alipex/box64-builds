@@ -1,7 +1,7 @@
 # box64-builds
 
 > [!CAUTION]
-> This is a work-in-progress. No actual releases exist at this point in time. 
+> This is a work-in-progress. No actual releases exist at this point in time.
 
 Here you can find various versions of box64 that are automatically built upon a new release or commit to the [ptitSeb/box64](https://github.com/ptitSeb/box64) repository.
 
@@ -16,7 +16,7 @@ Downloads can be found under the [Releases tab.](https://github.com/alipex/box64
 
 ### Supported targets
 
-Executable Name | Chip architecture                | Target
+Executable name | Chip architecture                | Target
 --------------- | -------------------------------- | -------------------------------
 box64-aarch64   | ARM 64-bit (aarch64), 4K pages   | Generic ARM64 (aarch64) systems
 box64-rv64gc    | RISC-V 64-bit (rv64gc), 4K pages | Generic RISC-V (rv64gc) systems
