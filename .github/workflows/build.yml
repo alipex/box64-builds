@@ -32,15 +32,13 @@ jobs:
       - name: Install dependencies
         run: |
           set -e
-          echo "Installing dependencies for ${{ matrix.arch }}..."
           if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
-            sudo apt update || { echo "Failed to update apt packages"; exit 1; }
-            sudo apt install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu || { echo "Failed to install aarch64 dependencies"; exit 1; }
+            sudo apt update || { echo "[X] Failed to update apt packages"; exit 1; }
+            sudo apt install -y build-essential cmake git gcc-aarch64-linux-gnu g++-aarch64-linux-gnu || { echo "[X] Failed to install aarch64 dependencies"; exit 1; }
           elif [[ "${{ matrix.arch }}" == "rv64gc" ]]; then
-            sudo apt update || { echo "Failed to update apt packages"; exit 1; }
-            sudo apt install -y build-essential cmake git gcc-riscv64-linux-gnu g++-riscv64-linux-gnu || { echo "Failed to install RISC-V dependencies"; exit 1; }
+            sudo apt update || { echo "[X] Failed to update apt packages"; exit 1; }
+            sudo apt install -y build-essential cmake git gcc-riscv64-linux-gnu g++-riscv64-linux-gnu || { echo "[X] Failed to install rv64gc dependencies"; exit 1; }
           fi
-          echo "Dependencies installed successfully"
 
       - name: Determine build version
         id: set_ref
@@ -50,17 +48,17 @@ jobs:
           if [[ -n "$VERSION_INPUT" ]]; then
             REF="$VERSION_INPUT"
             REF_TYPE="version"
-            echo "Using provided version: $REF"
+            echo "[i] Using manually provided version: $REF"
           else
             echo "Fetching latest tag from box64 repository..."
-            latest_tag=$(git ls-remote --tags https://github.com/ptitSeb/box64 | awk -F/ '{print $3}' | grep -v '{}' | sort -V | tail -n1) || { echo "Failed to fetch latest tag"; exit 1; }
+            latest_tag=$(git ls-remote --tags https://github.com/ptitSeb/box64 | awk -F/ '{print $3}' | grep -v '{}' | sort -V | tail -n1) || { echo "[X] Failed to fetch latest tag"; exit 1; }
             if [[ -z "$latest_tag" ]]; then
-              echo "ERROR: Could not determine latest tag"
+              echo "[X] Could not determine latest tag"
               exit 1
             fi
             REF="$latest_tag"
             REF_TYPE="version"
-            echo "Using latest tag: $REF"
+            echo "[i] Using latest tag ($REF)"
           fi
           echo "ref=$REF" >> $GITHUB_ENV
           echo "reftype=$REF_TYPE" >> $GITHUB_ENV
@@ -69,36 +67,29 @@ jobs:
       - name: Clone box64 source
         run: |
           set -e
-          echo "Cloning box64 repository..."
-          git clone https://github.com/ptitSeb/box64.git src || { echo "Failed to clone box64 repository"; exit 1; }
-          
+          git clone https://github.com/ptitSeb/box64.git src || { echo "[X] Failed to clone box64 repository"; exit 1; }
           cd src
           echo "Checking out version: ${{ env.ref }}"
-          
           if [[ "${{ env.reftype }}" == "version" ]]; then
             if git rev-parse "refs/tags/${{ env.ref }}" >/dev/null 2>&1; then
-              git checkout "tags/${{ env.ref }}" || { echo "Failed to checkout tag ${{ env.ref }}"; exit 1; }
+              git checkout "tags/${{ env.ref }}" || { echo "[X] Failed to checkout tag ${{ env.ref }}"; exit 1; }
             else
-              echo "ERROR: Tag '${{ env.ref }}' does not exist"
+              echo "[X] Tag '${{ env.ref }}' does not exist"
               exit 1
             fi
           else
-            git checkout "${{ env.ref }}" || { echo "Failed to checkout commit ${{ env.ref }}"; exit 1; }
+            git checkout "${{ env.ref }}" || { echo "[X] Failed to checkout commit ${{ env.ref }}"; exit 1; }
           fi
-          echo "Successfully checked out ${{ env.ref }}"
 
       - name: Check version support
         id: check_support
         run: |
           set -e
-          echo "Checking version support for ${{ env.ref }}..."
-          
           # Extract version number safely
           if [[ ! "${{ env.ref }}" =~ ^v?[0-9] ]]; then
-            echo "ERROR: Invalid version format: ${{ env.ref }}"
+            echo "[X] Invalid version format: ${{ env.ref }}"
             exit 1
           fi
-          
           ver=$(echo "${{ env.ref }}" | sed 's/^v//')
           major=$(echo "$ver" | awk -F. '{print $1}')
           minor=$(echo "$ver" | awk -F. '{print $2}')
@@ -107,29 +98,23 @@ jobs:
           minor=${minor:-0}
           patch=${patch:-0}
           ver_num=$(( major * 10000 + minor * 100 + patch ))
-          
-          echo "Version components: major=$major, minor=$minor, patch=$patch, numeric=$ver_num"
-          
           skip_build=false
           skip_dynarec=false
-          
           # RISC-V support from v0.1.8
           if [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 108 ]]; then
-            echo "WARNING: RISC-V not supported in version ${{ env.ref }} (needs v0.1.8+)"
+            echo "[!] RISC-V not supported in version ${{ env.ref }} (needs v0.1.8+)"
             skip_build=true
           fi
-          
           # Dynarec support checks
           if [[ "${{ matrix.dynarec }}" == "true" ]]; then
             if [[ "${{ matrix.arch }}" == "aarch64" && $ver_num -lt 6 ]]; then
-              echo "WARNING: ARM64 dynarec not supported in version ${{ env.ref }} (needs v0.0.6+)"
+              echo "[!] ARM64 dynarec not supported in version ${{ env.ref }} (needs v0.0.6+)"
               skip_dynarec=true
             elif [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 204 ]]; then
-              echo "WARNING: RISC-V dynarec not supported in version ${{ env.ref }} (needs v0.2.4+)"
+              echo "[!] RISC-V dynarec not supported in version ${{ env.ref }} (needs v0.2.4+)"
               skip_dynarec=true
             fi
           fi
-          
           echo "skip_build=$skip_build" >> $GITHUB_OUTPUT
           echo "skip_dynarec=$skip_dynarec" >> $GITHUB_OUTPUT
 
@@ -137,21 +122,16 @@ jobs:
         if: steps.check_support.outputs.skip_build != 'true' && steps.check_support.outputs.skip_dynarec != 'true'
         run: |
           set -e
-          echo "Starting build for ${{ matrix.arch }} (dynarec: ${{ matrix.dynarec }})..."
-          
           WORKDIR=$GITHUB_WORKSPACE
           SOURCE_DIR=$WORKDIR/src
           BUILD_DIR=$WORKDIR/build-${{ matrix.arch }}-${{ matrix.dynarec }}
-          
           # Verify source directory exists
           if [[ ! -d "$SOURCE_DIR" ]]; then
-            echo "ERROR: Source directory $SOURCE_DIR does not exist"
+            echo "[X] Source directory $SOURCE_DIR does not exist"
             exit 1
           fi
-          
-          mkdir -p $BUILD_DIR || { echo "Failed to create build directory"; exit 1; }
+          mkdir -p $BUILD_DIR || { echo "[X] Failed to create build directory"; exit 1; }
           cd $BUILD_DIR
-          
           # Set up compiler based on architecture
           if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
             SYSTEM_PROCESSOR="aarch64"
@@ -319,15 +299,6 @@ jobs:
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           VERSION_REF="${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}"
           
-          # Start building the release body
-          RELEASE_BODY="# Box64 $VERSION_REF - Automated Builds"
-          RELEASE_BODY="$RELEASE_BODY\n\n"
-          RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n\n"
-          
-          RELEASE_BODY="$RELEASE_BODY## Available Builds\n\n"
-          RELEASE_BODY="$RELEASE_BODY| Executable Name | Chip architecture | Target | DynaRec | Box32 |\n"
-          RELEASE_BODY="$RELEASE_BODY|-----------------|-------------------|--------|---------|-------|\n"
-          
           # Collect only successful builds by scanning actual artifacts
           SUCCESSFUL_BUILDS=()
           
@@ -335,59 +306,22 @@ jobs:
           while IFS= read -r -d '' file; do
             ARTIFACT_NAME=$(basename "$file")
             echo "Found artifact: $ARTIFACT_NAME"
-            
-            # Parse info from filename: box64-{version}-{arch}{-dynarec}{-box32}
             if [[ "$ARTIFACT_NAME" =~ box64-(.+)-(.+)$ ]]; then
-              VERSION_PART="${BASH_REMATCH[1]}"
-              ARCH_PART="${BASH_REMATCH[2]}"
-              
-              # Detect architecture and set descriptions
-              if [[ "$ARCH_PART" == *"aarch64"* ]]; then
-                ARCH="ARM 64-bit (aarch64), 4K pages"
-                TARGET="Generic ARM64 (aarch64) systems"
-              elif [[ "$ARCH_PART" == *"rv64gc"* ]]; then
-                ARCH="RISC-V 64-bit (rv64gc), 4K pages"
-                TARGET="Generic RISC-V (rv64gc) systems"
-              else
-                ARCH="unknown"
-                TARGET="unknown"
-              fi
-              
-              # Detect features from filename
-              if [[ "$ARCH_PART" == *"dynarec"* ]]; then
-                DYNAREC_DISPLAY="✅"
-              else
-                DYNAREC_DISPLAY="❌"
-              fi
-              
-              if [[ "$ARCH_PART" == *"box32"* ]]; then
-                BOX32_DISPLAY="✅"
-              else
-                BOX32_DISPLAY="❌"
-              fi
-              
-              RELEASE_BODY="$RELEASE_BODY| \`$ARTIFACT_NAME\` | $ARCH | $TARGET | $DYNAREC_DISPLAY | $BOX32_DISPLAY |\n"
               SUCCESSFUL_BUILDS+=("$ARTIFACT_NAME")
             fi
           done < <(find release-artifacts -type f -name "box64-*" -print0 2>/dev/null || true)
           
           # If no successful builds were found, skip release
           if [[ ${#SUCCESSFUL_BUILDS[@]} -eq 0 ]]; then
-            echo "No successful builds found, cannot create release"
+            echo "[X] No successful builds found, cannot create release"
             echo "release_body=No builds were successfully created" >> $GITHUB_OUTPUT
             exit 1
           fi
-          
-          RELEASE_BODY="$RELEASE_BODY\n## Usage\n"
-          RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
-          RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
-          RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
-          RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
-          
+
           RELEASE_BODY="$RELEASE_BODY## Build Information\n"
           RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
           RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
-          RELEASE_BODY="$RELEASE_BODY- **Source**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Source**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/$VERSION_REF)\n"
           
           # Store the release body
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
@@ -399,7 +333,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: release-artifacts/**/*
-          tag_name: box64-${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}
+          tag_name: ${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}
           name: "Box64 ${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}"
           body: ${{ steps.generate_release_body.outputs.release_body }}
           draft: false
