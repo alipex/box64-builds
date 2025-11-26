@@ -324,7 +324,7 @@ jobs:
           RELEASE_BODY="$RELEASE_BODYAutomated builds of [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n\n"
           
           RELEASE_BODY="$RELEASE_BODY## Available Builds\n\n"
-          RELEASE_BODY="$RELEASE_BODY| Executable name | Chip architecture | Target | DynaRec | Box32 |\n"
+          RELEASE_BODY="$RELEASE_BODY| Executable Name | Chip architecture | Target | DynaRec | Box32 |\n"
           RELEASE_BODY="$RELEASE_BODY|-----------------|-------------------|--------|---------|-------|\n"
           
           # Collect only successful builds by scanning actual artifacts
@@ -368,18 +368,25 @@ jobs:
               RELEASE_BODY="$RELEASE_BODY| \`$ARTIFACT_NAME\` | $ARCH | $TARGET | $DYNAREC_DISPLAY | $BOX32_DISPLAY |\n"
               SUCCESSFUL_BUILDS+=("$ARTIFACT_NAME")
             fi
-          done < <(find release-artifacts -type f -name "box64-*" -print0)
+          done < <(find release-artifacts -type f -name "box64-*" -print0 2>/dev/null || true)
           
           # If no successful builds were found, skip release
           if [[ ${#SUCCESSFUL_BUILDS[@]} -eq 0 ]]; then
             echo "No successful builds found, cannot create release"
+            echo "release_body=No builds were successfully created" >> $GITHUB_OUTPUT
             exit 1
           fi
           
-          RELEASE_BODY="$RELEASE_BODY## About this build\n"
-          RELEASE_BODY="$RELEASE_BODY- **Build date**: $BUILD_DATE\n"
+          RELEASE_BODY="$RELEASE_BODY\n## Usage\n"
+          RELEASE_BODY="$RELEASE_BODY\`\`\`bash\n"
+          RELEASE_BODY="$RELEASE_BODYchmod +x box64-*\n"
+          RELEASE_BODY="$RELEASE_BODY./box64-* your_x86_application\n"
+          RELEASE_BODY="$RELEASE_BODY\`\`\`\n\n"
+          
+          RELEASE_BODY="$RELEASE_BODY## Build Information\n"
+          RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
           RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
-          RELEASE_BODY="$RELEASE_BODY- **Source code**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/$VERSION_REF)\n"
+          RELEASE_BODY="$RELEASE_BODY- **Source**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/latest)\n"
           
           # Store the release body
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
