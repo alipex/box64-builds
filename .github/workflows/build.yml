@@ -312,7 +312,7 @@ jobs:
             echo "artifacts_exist=false" >> $GITHUB_OUTPUT
           fi
 
-            - name: Generate release body
+      - name: Generate release body
         id: generate_release_body
         run: |
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
