@@ -254,8 +254,8 @@ jobs:
         run: |
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           
-          # Create JSON build info for this specific build
-          BUILD_INFO=$(jq -n \
+          # Create a JSON string and properly escape it
+          BUILD_INFO_JSON=$(jq -n -c \
             --arg arch "${{ matrix.arch }}" \
             --arg dynarec "${{ matrix.dynarec }}" \
             --arg box32 "${{ env.BOX32_SUFFIX != '' }}" \
@@ -269,7 +269,8 @@ jobs:
               date: $date
             }')
           
-          echo "build_info=$BUILD_INFO" >> $GITHUB_OUTPUT
+          # Output using proper GitHub Actions format
+          echo "build_info=$BUILD_INFO_JSON" >> $GITHUB_OUTPUT
 
       - name: Check if any builds were successful
         if: always()
