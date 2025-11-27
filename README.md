@@ -1,8 +1,5 @@
 # box64-builds
 
-> [!CAUTION]
-> This is a work-in-progress. No actual releases exist at this point in time.
-
 Here you can find various versions of box64 that are automatically built every 2 weeks if a new release is found.
 
 ## Details regarding releases
