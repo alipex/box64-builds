@@ -23,26 +23,36 @@ jobs:
         echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
         echo "Latest release: $LATEST_TAG"
         
-    - name: Compare with last built
-      id: compare
+    - name: Check if already built
+      id: check_built
       run: |
-        if [ -f last_built.txt ]; then
-          LAST_BUILT=$(cat last_built.txt)
-          if [ "$LAST_BUILT" = "${{ steps.release.outputs.latest_tag }}" ]; then
-            echo "new_release=false" >> $GITHUB_OUTPUT
-            echo "No new release found (last built: $LAST_BUILT)"
-            exit 0
-          else
-            echo "New release found: ${{ steps.release.outputs.latest_tag }} (was: $LAST_BUILT)"
-            echo "new_release=true" >> $GITHUB_OUTPUT
-          fi
+        # Initialize or load builds.json
+        if [ -f builds.json ]; then
+          echo "Loading existing builds.json"
         else
-          echo "First run - building: ${{ steps.release.outputs.latest_tag }}"
-          echo "new_release=true" >> $GITHUB_OUTPUT
+          echo "Creating new builds.json"
+          echo '{"builds": [], "last_checked": ""}' > builds.json
         fi
         
+        # Check if this version is already in builds.json
+        VERSION="${{ steps.release.outputs.latest_tag }}"
+        
+        if jq -e --arg version "$VERSION" '.builds[] | select(.version == $version)' builds.json > /dev/null 2>&1; then
+          echo "Version $VERSION already built"
+          echo "already_built=true" >> $GITHUB_OUTPUT
+        else
+          echo "Version $VERSION not yet built"
+          echo "already_built=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Update builds.json with check date
+      run: |
+        CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        jq --arg date "$CURRENT_DATE" '.last_checked = $date' builds.json > builds.json.tmp
+        mv builds.json.tmp builds.json
+        
     - name: Trigger build workflow
-      if: steps.compare.outputs.new_release == 'true'
+      if: steps.check_built.outputs.already_built == 'false'
       run: |
         curl -X POST \
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -50,12 +60,10 @@ jobs:
           https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/dispatches \
           -d "{\"ref\":\"main\",\"inputs\":{\"version\":\"${{ steps.release.outputs.latest_tag }}\"}}"
         
-    - name: Update last built record
-      if: steps.compare.outputs.new_release == 'true'
+    - name: Commit updated builds.json
       run: |
-        echo "${{ steps.release.outputs.latest_tag }}" > last_built.txt
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
-        git add last_built.txt
-        git commit -m "Update last built to ${{ steps.release.outputs.latest_tag }}" || echo "No changes to commit"
+        git add builds.json
+        git commit -m "Update builds.json check date" || echo "No changes to commit"
         git push
