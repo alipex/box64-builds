@@ -3,12 +3,11 @@ name: New target/version request
 about: Suggest a new target and/or version to support with custom flags
 title: "[NEW TARGET] (specify which target or version to support)"
 labels: new-platform
-assignees: ''
+assignees: alipex
 
 ---
 
-**Is your requested platform available as a separate flag when building box64?**
-*You can check [here.](https://github.com/ptitSeb/box64/blob/main/docs/COMPILE.md)*
+**Is your requested platform available as a separate flag when building box64?** *You can check [here.](https://github.com/ptitSeb/box64/blob/main/docs/COMPILE.md)*
 If yes, please write out the flag that is available.
 
 **From which version is this target available?**
