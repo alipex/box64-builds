@@ -16,10 +16,17 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+      
     - name: Get latest release
       id: release
       run: |
         LATEST_TAG=$(curl -s "https://api.github.com/repos/ptitSeb/box64/releases/latest" | jq -r .tag_name)
+        if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+          echo "Error: Could not get latest release tag"
+          exit 1
+        fi
         echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
         echo "Latest release: $LATEST_TAG"
         
@@ -29,6 +36,11 @@ jobs:
         # Initialize or load builds.json
         if [ -f builds.json ]; then
           echo "Loading existing builds.json"
+          # Validate JSON
+          if ! jq empty builds.json 2>/dev/null; then
+            echo "Warning: builds.json is invalid JSON, recreating"
+            echo '{"builds": [], "last_checked": ""}' > builds.json
+          fi
         else
           echo "Creating new builds.json"
           echo '{"builds": [], "last_checked": ""}' > builds.json
@@ -48,8 +60,15 @@ jobs:
     - name: Update builds.json with check date
       run: |
         CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        jq --arg date "$CURRENT_DATE" '.last_checked = $date' builds.json > builds.json.tmp
+        # Backup first
+        cp builds.json builds.json.backup
+        if ! jq --arg date "$CURRENT_DATE" '.last_checked = $date' builds.json > builds.json.tmp; then
+          echo "Error: Failed to update builds.json"
+          mv builds.json.backup builds.json
+          exit 1
+        fi
         mv builds.json.tmp builds.json
+        rm -f builds.json.backup
         
     - name: Trigger build workflow
       if: steps.check_built.outputs.already_built == 'false'
@@ -64,6 +83,21 @@ jobs:
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
+        
+        # Pull latest changes first
+        git pull --rebase || echo "Pull failed, continuing..."
+        
         git add builds.json
-        git commit -m "Update builds.json check date" || echo "No changes to commit"
-        git push
+        git commit -m "Update builds.json check date for ${{ steps.release.outputs.latest_tag }}" || echo "No changes to commit"
+        
+        # Retry push
+        for i in 1 2 3; do
+          if git push; then
+            echo "Push successful"
+            break
+          else
+            echo "Push failed, attempt $i/3"
+            sleep 2
+            git pull --rebase || echo "Rebase failed"
+          fi
+        done
