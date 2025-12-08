@@ -1,4 +1,18 @@
 {
-  "builds": [],
+  "builds": [
+    {
+      "version": "v0.3.8",
+      "workflow_number": "42",
+      "run_id": "20038265450",
+      "run_url": "https://github.com/alipex/box64-builds/actions/runs/20038265450",
+      "build_date": "2025-12-08T18:24:14Z",
+      "artifacts": [
+        "box64-v0.3.8-rv64gc-dynarec-box32",
+        "box64-v0.3.8-aarch64-dynarec-box32",
+        "box64-v0.3.8-rv64gc-box32",
+        "box64-v0.3.8-aarch64-box32"
+      ]
+    }
+  ],
   "last_checked": "2025-12-03T23:09:44Z"
 }
