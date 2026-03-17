@@ -18,6 +18,15 @@ Executable name | Chip architecture                | Target
 box64-aarch64   | ARM 64-bit (aarch64), 4K pages   | Generic ARM64 (aarch64) systems
 box64-rv64gc    | RISC-V 64-bit (rv64gc), 4K pages | Generic RISC-V (rv64gc) systems
 
+### Coming soon
+
+Executable name | Chip architecture                   | Target
+--------------- | ----------------------------------- | -------------------------------
+box64-m1        | Apple Silicon (aarch64), 16K pages  | Apple Macs w/ Asahi Linux
+box64-rpi3b     | Broadcom BCM2837, 16K pages         | Raspberry Pi 3B SBC
+box64-rpi4b     | Broadcom BCM2711, 16K pages         | Raspberry Pi 4B SBC
+box64-rpi5b     | Broadcom BCM2712, 16K pages         | Raspberry Pi 5B SBC
+
 Have a target that you would like to see supported? [Open an issue!](https://github.com/alipex/box64-builds/issues/)
 
 ## Why?
