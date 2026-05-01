@@ -25,6 +25,19 @@
         "box64-v0.4.0-aarch64-dynarec-box32",
         "box64-v0.4.0-rv64gc-box32"
       ]
+    },
+    {
+      "version": "v0.4.2",
+      "workflow_number": "46",
+      "run_id": "25203768810",
+      "run_url": "https://github.com/alipex/box64-builds/actions/runs/25203768810",
+      "build_date": "2026-05-01T05:40:20Z",
+      "artifacts": [
+        "box64-v0.4.2-rv64gc-dynarec-box32",
+        "box64-v0.4.2-aarch64-dynarec-box32",
+        "box64-v0.4.2-aarch64-box32",
+        "box64-v0.4.2-rv64gc-box32"
+      ]
     }
   ],
   "last_checked": "2026-05-01T05:33:12Z"
