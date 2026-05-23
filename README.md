@@ -1,6 +1,6 @@
 # box64-builds
 
-Here you can find various versions of box64 that are automatically built every 2 weeks if a new release is found.
+Here you can find various versions of [box64](https://github.com/ptitSeb/box64) that are automatically built every 2 weeks if a new release is found.
 
 ## Details regarding releases
 
@@ -13,10 +13,21 @@ Downloads can be found under the [Releases tab.](https://github.com/alipex/box64
 
 ### Supported targets
 
+**Actively supported targets:**
+
 Executable name | Chip architecture                | Target
 --------------- | -------------------------------- | -------------------------------
 box64-aarch64   | ARM 64-bit (aarch64), 4K pages   | Generic ARM64 (aarch64) systems
 box64-rv64gc    | RISC-V 64-bit (rv64gc), 4K pages | Generic RISC-V (rv64gc) systems
+
+**Soon-to-be supported targets:**
+
+Executable name | Chip architecture                | Target
+--------------- | -------------------------------- | -------------------------------
+box64-m1        | ARM 64-bit (aarch64), 16K pages  | Asahi Linux (Apple) systems
+box64-rpi3      | ARM 64-bit (aarch64), 16K pages  | Raspberry Pi 3 SoC
+box64-rpi4      | ARM 64-bit (aarch64), 16K pages  | Raspberry Pi 4 SoC
+box64-rpi5      | ARM 64-bit (aarch64), 16K pages  | Raspberry Pi 5 SoC
 
 Have a target that you would like to see supported? [Open an issue!](https://github.com/alipex/box64-builds/issues/)
 
@@ -30,6 +41,6 @@ Anyone can implement these executables into their projects without needing to co
 
 ## License
 
-These builds are provided under the Unlicense - the terms can be found [here.](https://github.com/alipex/box64-builds/LICENSE)
+These builds are provided under the Unlicense - the terms can be found [here.](https://github.com/alipex/box64-builds/blob/main/LICENSE)
 
 Box64 is licensed under the MIT license. If you use box64, you are agreeing to the terms as stipulated [here.](https://github.com/ptitSeb/box64/LICENSE)
