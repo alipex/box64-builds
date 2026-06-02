@@ -18,6 +18,7 @@ jobs:
     strategy:
       matrix:
         arch: [aarch64, rv64gc]
+        subarch: [aarch64-reg, aarch64-rpi3, aarch64-rpi4, aarch64-rpi5, aarch64-m1, rv64gc-reg]
         dynarec: [true, false]
 
     outputs:
@@ -281,7 +282,7 @@ jobs:
 
   # Create release after all builds complete
   create-release:
-    name: Create Release
+    name: Create new release
     runs-on: ubuntu-latest
     needs: build-matrix
     # Only create release if ALL matrix jobs completed AND at least one build was successful
@@ -357,7 +358,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   update-builds-json:
-    name: Update Builds Database
+    name: Update builds database
     runs-on: ubuntu-latest
     needs: [build-matrix, create-release]
     if: needs.build-matrix.result == 'success' && needs.create-release.result == 'success'
