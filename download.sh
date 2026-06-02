@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Default values
-USE_BOX32="false"
+USE_BOX32="FALSE"
 OUTPUT_NAME="box64"
 TARGET_TAG=""
 
@@ -14,9 +14,9 @@ A zero-dependency script to download the latest or a specific pre-compiled
 Box64 binary matching your system's architecture (ARM64 or RISC-V).
 
 Options:
-  --box32          Download the box32-enabled variant
+  -b, --box32      Download the box32-enabled variant (ARM64 & RISC-V)
   -o, --output     Specify custom output filename (Default: box64)
-  -v, --version    Specify a specific version tag to download (e.g., v0.3.0)
+  -v, --version    Specify a specific version tag to download (e.g., v0.4.2)
   -l, --list       Print all available version tags on GitHub and exit
   -h, --help       Show this help message and exit
 
@@ -24,7 +24,7 @@ Examples:
   ./$(basename "$0")
   ./$(basename "$0") --box32
   ./$(basename "$0") --list
-  ./$(basename "$0") -v v0.3.0 -b
+  ./$(basename "$0") -v v0.4.2 -b
 EOF
 }
 
@@ -49,7 +49,7 @@ while [[ $# -gt 0 ]]; do
                 TARGET_TAG="$2"
                 shift 2
             else
-                echo "Error: Argument for $1 is missing (Expected version tag like v0.3.0)" >&2
+                echo "Error: Argument for $1 is missing (Expected version tag like v0.4.2)" >&2
                 exit 1
             fi
             ;;
@@ -91,9 +91,8 @@ esac
 
 echo "Detected architecture: $SYSTEM_ARCH"
 
-# 2. Establish which version tag to use
+# 2. Establish which version tag to use using custom extraction logic
 if [ -z "$TARGET_TAG" ]; then
-    # Default behavior: Fetch the latest tag from GitHub
     TARGET_TAG=$(curl -s https://github.com/alipex/box64-builds/tags | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n 1)
     if [ -z "$TARGET_TAG" ]; then
         echo "Error: Failed to fetch the latest Box64 release tag from GitHub." >&2
@@ -101,17 +100,16 @@ if [ -z "$TARGET_TAG" ]; then
     fi
     echo "Latest Box64 release found: $TARGET_TAG"
 else
-    # Normalize input: make sure it starts with 'v' just in case user types '0.3.0' instead of 'v0.3.0'
     if [[ ! "$TARGET_TAG" =~ ^v ]]; then
         TARGET_TAG="v$TARGET_TAG"
     fi
     echo "Targeting specified release: $TARGET_TAG"
 fi
 
-# Strip 'v' prefix for the asset filename template
+# Extract the raw version number (stripping out the 'v')
 VERSION_NUM=$(echo "$TARGET_TAG" | sed 's/^v//')
 
-# 3. Formulate the correct filename based on architecture and box32 parameters
+# 3. Formulate the correct filename layout (Allows box32 builds on both ARM64 and RISC-V)
 if [ "$USE_BOX32" = "true" ]; then
     FILENAME="box64-${VERSION_NUM}-${SYSTEM_ARCH}-dynarec-box32"
 else
@@ -120,14 +118,15 @@ fi
 
 URL="https://github.com/alipex/box64-builds/releases/download/${TARGET_TAG}/${FILENAME}"
 
-# 4. Download and make executable
+# 4. Download using curl and set executable flags cleanly
 echo "Downloading from: $URL"
-wget -q --show-progress -O "$OUTPUT_NAME" "$URL"
+curl -o "./$OUTPUT_NAME" -sSL "$URL"
 
-if [ $? -eq 0 ]; then
+if [ $? -eq 0 ] && [ -s "./$OUTPUT_NAME" ]; then
     chmod +x "./$OUTPUT_NAME"
-    echo "Successfully downloaded and configured './$OUTPUT_NAME'!"
+    echo "Successfully downloaded and configured './$OUTPUT_NAME'."
 else
-    echo "Error: Download failed. Check if the version ($TARGET_TAG) or parameter combination exists." >&2
+    echo "Error: Download failed or binary is empty. Check if version ($TARGET_TAG) or combination exists." >&2
+    rm -f "./$OUTPUT_NAME" # Clear corrupt empty files if curl failed quietly
     exit 1
 fi

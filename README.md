@@ -15,6 +15,10 @@ The easiest way to download these builds is via a convenience script:
 
 ``curl -sSL https://github.com/alipex/box64-builds/download.sh | bash``
 
+Or, you can use wget instead:
+
+``wget -qO- https://github.com/alipex/box64-builds/download.sh | bash``
+
 ### Direct download
 
 Alternatively, direct executable downloads can be found under the [Releases tab.](https://github.com/alipex/box64-builds/releases)
