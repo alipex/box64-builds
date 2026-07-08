@@ -1,9 +1,8 @@
-# .github/workflows/check-releases.yml
 name: Check for new releases
 
 on:
   schedule:
-    - cron: '0 2 1,15 * *'  # 1st and 15th at 2 AM
+    - cron: '0 2 1,15 * *'
   workflow_dispatch:
 
 permissions:
@@ -14,91 +13,74 @@ jobs:
   check-releases:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      
-    - name: Install jq
-      run: sudo apt-get update && sudo apt-get install -y jq
-      
-    - name: Get latest release
-      id: release
-      run: |
-        LATEST_TAG=$(curl -s "https://api.github.com/repos/ptitSeb/box64/releases/latest" | jq -r .tag_name)
-        if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
-          echo "Error: Could not get latest release tag"
-          exit 1
-        fi
-        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-        echo "Latest release: $LATEST_TAG"
-        
-    - name: Check if already built
-      id: check_built
-      run: |
-        # Initialize or load builds.json
-        if [ -f builds.json ]; then
-          echo "Loading existing builds.json"
-          # Validate JSON
-          if ! jq empty builds.json 2>/dev/null; then
-            echo "Warning: builds.json is invalid JSON, recreating"
-            echo '{"builds": [], "last_checked": ""}' > builds.json
-          fi
-        else
-          echo "Creating new builds.json"
-          echo '{"builds": [], "last_checked": ""}' > builds.json
-        fi
-        
-        # Check if this version is already in builds.json
-        VERSION="${{ steps.release.outputs.latest_tag }}"
-        
-        if jq -e --arg version "$VERSION" '.builds[] | select(.version == $version)' builds.json > /dev/null 2>&1; then
-          echo "Version $VERSION already built"
-          echo "already_built=true" >> $GITHUB_OUTPUT
-        else
-          echo "Version $VERSION not yet built"
-          echo "already_built=false" >> $GITHUB_OUTPUT
-        fi
-        
-    - name: Update builds.json with check date
-      run: |
-        CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        # Backup first
-        cp builds.json builds.json.backup
-        if ! jq --arg date "$CURRENT_DATE" '.last_checked = $date' builds.json > builds.json.tmp; then
-          echo "Error: Failed to update builds.json"
-          mv builds.json.backup builds.json
-          exit 1
-        fi
-        mv builds.json.tmp builds.json
-        rm -f builds.json.backup
-        
-    - name: Trigger build workflow
-      if: steps.check_built.outputs.already_built == 'false'
-      run: |
-        curl -X POST \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/dispatches \
-          -d "{\"ref\":\"main\",\"inputs\":{\"version\":\"${{ steps.release.outputs.latest_tag }}\"}}"
-        
-    - name: Commit updated builds.json
-      run: |
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        
-        # Pull latest changes first
-        git pull --rebase || echo "Pull failed, continuing..."
-        
-        git add builds.json
-        git commit -m "Update builds.json check date for ${{ steps.release.outputs.latest_tag }}" || echo "No changes to commit"
-        
-        # Retry push
-        for i in 1 2 3; do
-          if git push; then
-            echo "Push successful"
-            break
-          else
-            echo "Push failed, attempt $i/3"
-            sleep 2
-            git pull --rebase || echo "Rebase failed"
-          fi
-        done
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check and trigger
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { execSync } = require('child_process');
+
+            // Get latest box64 release
+            const { data: release } = await github.rest.repos.getLatestRelease({
+              owner: 'ptitSeb',
+              repo: 'box64'
+            });
+            const tag = release.tag_name;
+
+            // Load build history
+            const buildsPath = path.join(process.env.GITHUB_WORKSPACE, 'builds.json');
+            let builds = { builds: [], last_checked: '' };
+            if (fs.existsSync(buildsPath)) {
+              try {
+                builds = JSON.parse(fs.readFileSync(buildsPath, 'utf8'));
+              } catch (e) {
+                // If corrupt, start fresh
+              }
+            }
+
+            // Check if we've built this version
+            const known = builds.builds.some(b => b.version === tag);
+            const now = new Date().toISOString();
+
+            // Update history
+            if (!known) {
+              builds.builds.push({ version: tag, built_at: now });
+            }
+            builds.last_checked = now;
+            fs.writeFileSync(buildsPath, JSON.stringify(builds, null, 2));
+
+            // Push changes if any
+            try {
+              execSync('git config user.name "github-actions[bot]"');
+              execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
+              execSync('git add builds.json');
+              execSync('git commit -m "builds.json: record ' + tag + '"');
+
+              for (let i = 0; i < 3; i++) {
+                try {
+                  execSync('git push origin HEAD:main --force-with-lease');
+                  break;
+                } catch (e) {
+                  if (i === 2) throw e;
+                  execSync('git pull --rebase origin main');
+                }
+              }
+            } catch (_) {
+              // No changes, nothing to commit
+            }
+
+            // Trigger build workflow if new version
+            if (!known) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'build.yml',
+                ref: context.ref,
+                inputs: { version: tag }
+              });
+            }
