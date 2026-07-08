@@ -2,7 +2,7 @@ name: Check for new releases
 
 on:
   schedule:
-    - cron: '0 2 1,15 * *'  # 1st and 15th at 2 AM
+    - cron: '0 2 1,15 * *'
   workflow_dispatch:
 
 permissions:
@@ -25,74 +25,62 @@ jobs:
             const path = require('path');
             const { execSync } = require('child_process');
 
-            // 1. Fetch the latest release from the upstream repo
+            // Get latest box64 release
             const { data: release } = await github.rest.repos.getLatestRelease({
               owner: 'ptitSeb',
               repo: 'box64'
             });
-            const latestTag = release.tag_name;
-            console.log(`Latest upstream release: ${latestTag}`);
+            const tag = release.tag_name;
 
-            // 2. Read current builds.json (or create a default one)
+            // Load build history
             const buildsPath = path.join(process.env.GITHUB_WORKSPACE, 'builds.json');
             let builds = { builds: [], last_checked: '' };
             if (fs.existsSync(buildsPath)) {
               try {
                 builds = JSON.parse(fs.readFileSync(buildsPath, 'utf8'));
               } catch (e) {
-                console.warn('Invalid builds.json, resetting to default');
+                // If corrupt, start fresh
               }
             }
 
-            // 3. Check if this version was already built
-            const alreadyBuilt = builds.builds.some(b => b.version === latestTag);
+            // Check if we've built this version
+            const known = builds.builds.some(b => b.version === tag);
             const now = new Date().toISOString();
 
-            // 4. Always update last_checked; add the new version if missing
-            if (!alreadyBuilt) {
-              builds.builds.push({ version: latestTag, built_at: now });
-              console.log(`✅ New version detected: ${latestTag}`);
-            } else {
-              console.log(`⏭️  Version ${latestTag} already built, skipping trigger`);
+            // Update history
+            if (!known) {
+              builds.builds.push({ version: tag, built_at: now });
             }
             builds.last_checked = now;
-
-            // 5. Write the updated JSON back to disk
             fs.writeFileSync(buildsPath, JSON.stringify(builds, null, 2));
 
-            // 6. Commit and push builds.json (only if changed)
+            // Push changes if any
             try {
               execSync('git config user.name "github-actions[bot]"');
               execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
               execSync('git add builds.json');
-              // This throws if there's nothing to commit (no changes)
-              execSync('git commit -m "Update builds.json for ' + latestTag + '"');
-              
-              // Push with retry (handles race conditions where someone pushed before us)
+              execSync('git commit -m "builds.json: record ' + tag + '"');
+
               for (let i = 0; i < 3; i++) {
                 try {
                   execSync('git push origin HEAD:main --force-with-lease');
-                  console.log('✅ builds.json pushed successfully');
                   break;
-                } catch (pushErr) {
-                  console.log(`Push attempt ${i + 1} failed, pulling latest changes...`);
+                } catch (e) {
+                  if (i === 2) throw e;
                   execSync('git pull --rebase origin main');
-                  if (i === 2) throw pushErr; // rethrow on final failure
                 }
               }
-            } catch (commitErr) {
-              // No changes to commit – that's fine, means nothing new
-              console.log('ℹ️  No changes to commit (builds.json already up to date)');
+            } catch (_) {
+              // No changes, nothing to commit
             }
 
-            // 7. If this is a new version, trigger the build workflow
-            if (!alreadyBuilt) {
+            // Trigger build workflow if new version
+            if (!known) {
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                workflow_id: 'build.yml',        // your existing build workflow filename
-                ref: context.ref,                 // uses the same branch that triggered this check
-                inputs: { version: latestTag }
+                workflow_id: 'build.yml',
+                ref: context.ref,
+                inputs: { version: tag }
               });
-              console.log(`🚀 Triggered build workflow for ${latestTag}`);
             }
