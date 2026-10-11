@@ -18,7 +18,6 @@ jobs:
     strategy:
       matrix:
         arch: [aarch64, rv64gc]
-        subarch: [aarch64-reg, aarch64-rpi3, aarch64-rpi4, aarch64-rpi5, aarch64-m1, rv64gc-reg]
         dynarec: [true, false]
 
     outputs:
@@ -29,7 +28,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Install dependencies
         run: |
           set -e
@@ -79,14 +78,13 @@ jobs:
               exit 1
             fi
           else
-            git checkout "${{ env.ref }}" || { echo "[X] Failed to checkout commit ${{ env.ref }}"; exit 1; }
+            git checkout "${{ env.ref }}" || { echo "[X] Failed to checkout commit ${{ env.ref }}" ; exit 1; }
           fi
 
       - name: Check version support
         id: check_support
         run: |
           set -e
-          # Extract version number safely
           if [[ ! "${{ env.ref }}" =~ ^v?[0-9] ]]; then
             echo "[X] Invalid version format: ${{ env.ref }}"
             exit 1
@@ -101,12 +99,12 @@ jobs:
           ver_num=$(( major * 10000 + minor * 100 + patch ))
           skip_build=false
           skip_dynarec=false
-          # RISC-V support from v0.1.8
+
           if [[ "${{ matrix.arch }}" == "rv64gc" && $ver_num -lt 108 ]]; then
             echo "[!] RISC-V not supported in version ${{ env.ref }} (needs v0.1.8+)"
             skip_build=true
           fi
-          # Dynarec support checks
+
           if [[ "${{ matrix.dynarec }}" == "true" ]]; then
             if [[ "${{ matrix.arch }}" == "aarch64" && $ver_num -lt 6 ]]; then
               echo "[!] ARM64 dynarec not supported in version ${{ env.ref }} (needs v0.0.6+)"
@@ -116,6 +114,7 @@ jobs:
               skip_dynarec=true
             fi
           fi
+
           echo "skip_build=$skip_build" >> $GITHUB_OUTPUT
           echo "skip_dynarec=$skip_dynarec" >> $GITHUB_OUTPUT
 
@@ -126,18 +125,18 @@ jobs:
           WORKDIR=$GITHUB_WORKSPACE
           SOURCE_DIR=$WORKDIR/src
           BUILD_DIR=$WORKDIR/build-${{ matrix.arch }}-${{ matrix.dynarec }}
-          # Verify source directory exists
+
           if [[ ! -d "$SOURCE_DIR" ]]; then
             echo "[X] Source directory $SOURCE_DIR does not exist"
             exit 1
           fi
+
           mkdir -p $BUILD_DIR || { echo "[X] Failed to create build directory"; exit 1; }
           cd $BUILD_DIR
-          # Set up compiler based on architecture
+
           if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
             SYSTEM_PROCESSOR="aarch64"
             C_COMPILER="aarch64-linux-gnu-gcc"
-            # ARM64 specific flags
             if [[ "${{ matrix.dynarec }}" == "true" ]]; then
               FLAGS="-DARM_DYNAREC=ON"
               DYNAREC_SUFFIX="-dynarec"
@@ -150,7 +149,6 @@ jobs:
           elif [[ "${{ matrix.arch }}" == "rv64gc" ]]; then
             SYSTEM_PROCESSOR="riscv64"
             C_COMPILER="riscv64-linux-gnu-gcc"
-            # RISC-V specific flags
             if [[ "${{ matrix.dynarec }}" == "true" ]]; then
               FLAGS="-DRV64_DYNAREC=ON"
               DYNAREC_SUFFIX="-dynarec"
@@ -161,20 +159,17 @@ jobs:
               echo "RISC-V Dynarec: DISABLED"
             fi
           fi
-          
-          # Verify compiler is available
+
           if ! command -v "$C_COMPILER" &> /dev/null; then
             echo "ERROR: Compiler $C_COMPILER not found"
             exit 1
           fi
-          
-          # Base build configuration - ONLY C compiler, no C++
+
           FLAGS="$FLAGS -DCMAKE_BUILD_TYPE=Release"
           FLAGS="$FLAGS -DCMAKE_SYSTEM_NAME=Linux"
           FLAGS="$FLAGS -DCMAKE_SYSTEM_PROCESSOR=$SYSTEM_PROCESSOR"
           FLAGS="$FLAGS -DCMAKE_C_COMPILER=$C_COMPILER"
-          
-          # BOX32 support (from v0.3.2)
+
           ver=$(echo "${{ env.ref }}" | sed 's/^v//')
           major=$(echo "$ver" | awk -F. '{print $1}')
           minor=$(echo "$ver" | awk -F. '{print $2}')
@@ -183,8 +178,8 @@ jobs:
           minor=${minor:-0}
           patch=${patch:-0}
           ver_num=$(( major * 10000 + minor * 100 + patch ))
-          
-          if [[ $ver_num -ge 302 ]]; then  # v0.3.2+
+
+          if [[ $ver_num -ge 302 ]]; then
             FLAGS="$FLAGS -DBOX32=ON -DBOX32_BINFMT=ON"
             BOX32_SUFFIX="-box32"
             echo "Box32: ENABLED"
@@ -193,18 +188,16 @@ jobs:
             BOX32_SUFFIX=""
             echo "Box32: DISABLED (requires v0.3.2+)"
           fi
-          
-          # Store suffixes in environment for later steps
+
           echo "DYNAREC_SUFFIX=$DYNAREC_SUFFIX" >> $GITHUB_ENV
           echo "BOX32_SUFFIX=$BOX32_SUFFIX" >> $GITHUB_ENV
-          
+
           echo "Running cmake with flags: $FLAGS"
           cmake $SOURCE_DIR $FLAGS || { echo "CMake configuration failed"; exit 1; }
-          
+
           echo "Running make..."
           make -j$(nproc) || { echo "make failed"; exit 1; }
-          
-          # Find and copy binary
+
           echo "Locating built binary..."
           BINARY_PATH=$(find $BUILD_DIR -type f -name "box64" -executable | head -n1)
           if [[ -f "$BINARY_PATH" ]]; then
@@ -212,8 +205,6 @@ jobs:
             ARTIFACT_NAME="box64-${{ env.ref }}-${{ matrix.arch }}${DYNAREC_SUFFIX}${BOX32_SUFFIX}"
             cp "$BINARY_PATH" "$WORKDIR/artifacts/$ARTIFACT_NAME" || { echo "Failed to copy binary"; exit 1; }
             echo "Build successful: $ARTIFACT_NAME"
-            
-            # Store artifact name for upload step
             echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
           else
             echo "ERROR: box64 binary not found in $BUILD_DIR"
@@ -234,8 +225,6 @@ jobs:
         id: set_build_info
         run: |
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          
-          # Create a JSON string and properly escape it
           BUILD_INFO_JSON=$(jq -n -c \
             --arg arch "${{ matrix.arch }}" \
             --arg dynarec "${{ matrix.dynarec }}" \
@@ -249,15 +238,12 @@ jobs:
               artifact: $artifact,
               date: $date
             }')
-          
-          # Output using proper GitHub Actions format
           echo "build_info=$BUILD_INFO_JSON" >> $GITHUB_OUTPUT
 
       - name: Check if any builds were successful
         if: always()
         id: check_builds
         run: |
-          # Check if this specific matrix job built successfully
           if [[ "${{ steps.check_support.outputs.skip_build }}" != "true" && "${{ steps.check_support.outputs.skip_dynarec }}" != "true" && "${{ job.status }}" == "success" ]]; then
             echo "This matrix job built successfully"
             echo "has_successful_builds=true" >> $GITHUB_OUTPUT
@@ -266,28 +252,12 @@ jobs:
             echo "has_successful_builds=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate SHA256 checksums
-        if: steps.check_artifacts.outputs.artifacts_exist == 'true'
-        run: |
-          echo "Generating SHA256 checksums for artifacts..."
-          cd release-artifacts
-          for file in box64-*; do
-            if [[ -f "$file" && ! "$file" == *.sha256 ]]; then
-              echo "Generating checksum for: $file"
-              sha256sum "$file" > "$file.sha256"
-            fi
-          done
-          echo "Checksums generated:"
-          ls -la *.sha256
-
-  # Create release after all builds complete
   create-release:
     name: Create new release
     runs-on: ubuntu-latest
     needs: build-matrix
-    # Only create release if ALL matrix jobs completed AND at least one build was successful
     if: needs.build-matrix.result == 'success' && needs.build-matrix.outputs.has_successful_builds == 'true'
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -313,11 +283,8 @@ jobs:
         run: |
           BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           VERSION_REF="${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}"
-          
-          # Collect only successful builds by scanning actual artifacts
+
           SUCCESSFUL_BUILDS=()
-          
-          echo "Scanning for built artifacts..."
           while IFS= read -r -d '' file; do
             ARTIFACT_NAME=$(basename "$file")
             echo "Found artifact: $ARTIFACT_NAME"
@@ -325,8 +292,7 @@ jobs:
               SUCCESSFUL_BUILDS+=("$ARTIFACT_NAME")
             fi
           done < <(find release-artifacts -type f -name "box64-*" -print0 2>/dev/null || true)
-          
-          # If no successful builds were found, skip release
+
           if [[ ${#SUCCESSFUL_BUILDS[@]} -eq 0 ]]; then
             echo "[X] No successful builds found, cannot create release"
             echo "release_body=No builds were successfully created" >> $GITHUB_OUTPUT
@@ -337,8 +303,7 @@ jobs:
           RELEASE_BODY="$RELEASE_BODY- **Build Date**: $BUILD_DATE\n"
           RELEASE_BODY="$RELEASE_BODY- **Workflow**: [#${{ github.run_number }}]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)\n"
           RELEASE_BODY="$RELEASE_BODY- **Source**: [Box64 $VERSION_REF](https://github.com/ptitSeb/box64/releases/tag/$VERSION_REF)\n"
-          
-          # Store the release body
+
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
           echo -e "$RELEASE_BODY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -362,14 +327,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-matrix, create-release]
     if: needs.build-matrix.result == 'success' && needs.create-release.result == 'success'
-    
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-        
+        uses: actions/checkout@v4
+
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-        
+
       - name: Load or initialize builds.json
         run: |
           if [ -f builds.json ]; then
@@ -378,28 +343,24 @@ jobs:
             echo "Creating new builds.json"
             echo '{"builds": [], "last_checked": ""}' > builds.json
           fi
-          
+
       - name: Download artifacts to get artifact list
         uses: actions/download-artifact@v4
         with:
           path: downloaded-artifacts
-          
+
       - name: Get build artifacts info
         id: artifacts_info
         run: |
-          # Create safe artifact list
           if find downloaded-artifacts -name "box64-*" -type f ! -name "*.sha256" 2>/dev/null | read -r; then
             ARTIFACT_LIST=$(find downloaded-artifacts -name "box64-*" -type f ! -name "*.sha256" 2>/dev/null | xargs -I {} basename {} | jq -R -s -c 'split("\n") | map(select(. != ""))')
           else
             ARTIFACT_LIST='[]'
             echo "Warning: No artifacts found!"
           fi
-          
-          # Create compact JSON for GitHub Actions output
+
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           VERSION="${{ needs.build-matrix.outputs.version_ref }}"
-          
-          # Create JSON string
           BUILD_INFO_JSON=$(jq -n \
             --arg version "$VERSION" \
             --arg workflow "${{ github.run_number }}" \
@@ -415,57 +376,46 @@ jobs:
               build_date: $date,
               artifacts: $artifacts
             }' | jq -c .)
-          
+
           echo "build_info=$BUILD_INFO_JSON" >> $GITHUB_OUTPUT
-          
+
       - name: Update builds.json
         run: |
           VERSION="${{ needs.build-matrix.outputs.version_ref }}"
-          
-          # Write build info to file first
           echo '${{ steps.artifacts_info.outputs.build_info }}' > new_build.json
-          
-          # Validate JSON
           if ! jq empty new_build.json 2>/dev/null; then
             echo "Error: Invalid JSON in build_info"
             echo "Raw output:"
             cat new_build.json
             exit 1
           fi
-          
-          # Backup original
+
           cp builds.json builds.json.backup
-          
-          # Remove existing entry for this version if it exists
           if ! jq --arg version "$VERSION" '.builds = (.builds | map(select(.version != $version)))' builds.json > builds.json.tmp; then
             echo "Error: Failed to process builds.json"
             cp builds.json.backup builds.json
             exit 1
           fi
           mv builds.json.tmp builds.json
-          
-          # Add new build entry
+
           if ! jq --slurpfile new_build new_build.json '.builds += $new_build' builds.json > builds.json.tmp; then
             echo "Error: Failed to add new build to builds.json"
             cp builds.json.backup builds.json
             exit 1
           fi
           mv builds.json.tmp builds.json
-          
+
           echo "Updated builds.json with version $VERSION"
-          
+
       - name: Commit and push builds.json
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          
-          # Pull latest changes first
+
           git pull --rebase || echo "Pull failed, continuing..."
-          
           git add builds.json
           git commit -m "Add build ${{ needs.build-matrix.outputs.version_ref }} to builds.json (Workflow #${{ github.run_number }})" || exit 0
-          
-          # Retry push up to 3 times
+
           for i in 1 2 3; do
             if git push; then
               echo "Push successful"
