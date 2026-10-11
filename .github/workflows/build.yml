@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Install dependencies
         run: |
@@ -345,7 +345,7 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.check_artifacts.outputs.artifacts_exist == 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release-artifacts/**/*
           tag_name: ${{ needs.build-matrix.outputs.version_ref || github.event.inputs.version || 'latest' }}
